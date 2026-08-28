@@ -89,11 +89,11 @@ laufender Schnipsel. Die Schwelle hängt an der Panelbreite und daran, welche
 Knöpfe stehen, **nicht** am Titel: sonst ginge die Anzeige bei jedem Lied an
 und aus.
 
-**Passt der Titel nicht, läuft er durch** – endlos, mit 34 Punkten je Sekunde
-und 40 Punkten Abstand zwischen den Durchläufen. Nur der Titel; der Interpret
-wird weiterhin gekürzt, und im Liedtext-Modus bricht die Zeile um statt zu
-wandern. Der Lauftext kostet rund 1,5 % eines Kerns, solange er läuft: die
-Bewegung lässt die Glasfläche bei jedem Bild neu mischen.
+**Passt der Titel nicht, läuft er durch** – endlos, mit 20 Punkten je Sekunde
+und 40 Punkten Abstand zwischen den Durchläufen. Jeder Durchlauf beginnt mit
+2,5 Sekunden Stillstand, damit sich der Anfang lesen lässt. Nur der Titel; der
+Interpret wird weiterhin gekürzt, und im Liedtext-Modus bricht die Zeile um
+statt zu wandern.
 
 Normal- und Liedtext-Modus merken sich ihre Breite getrennt – der Liedtext
 braucht mehr Platz als Cover, Titel und Knöpfe.
@@ -216,12 +216,13 @@ dem gerade gearbeitet wird, behält den Fokus.
 Gemessen mit `top -l 5` auf einem Kern. (`ps -o %cpu` taugt hier nicht – das
 ist der Durchschnitt über die ganze Laufzeit, nicht der aktuelle Wert.)
 
-| Zustand | vorher | jetzt |
-|---|---|---|
-| pausiert, Zeiger woanders | 4,0 % | **1,2 %** |
-| spielt, Zeiger woanders | 7,6 % | **2,8 %** |
-| spielt, Zeiger auf dem Panel | 9,3 % | **4,6 %** |
-| Liedtext-Modus, spielt | 3,2 % | **2,8 %** |
+| Zustand | ganz früher | zwischendurch | jetzt |
+|---|---|---|---|
+| pausiert, Zeiger woanders | 4,0 % | 1,2 % | **1,0 %** |
+| spielt, Zeiger woanders | 7,6 % | 2,8 % | **2,0 %** |
+| spielt, Zeiger auf dem Panel | 9,3 % | 4,6 % | **3,6 %** |
+| Liedtext-Modus, spielt | – | 2,8 % | **2,5 %** |
+| Titel läuft durch | – | +1,5 % | **kaum messbar** |
 
 Woher die Ersparnis kommt:
 
@@ -248,6 +249,18 @@ Woher die Ersparnis kommt:
   da bewegt sich nichts, und einen echten Wechsel meldet Spotify von selbst.
 - **Feste Puffer in der Tonanalyse** statt vier neuer Anlagen je Durchlauf, und
   der Ringspeicher wird blockweise kopiert statt Wert für Wert mit Modulo.
+- **Der Dock-Prozess wird nicht mehr gesucht.** Ihn alle zwei Sekunden in der
+  Prozessliste zu finden war im Leerlauf der größte verbliebene Posten – eine
+  Stichprobe zeigte den Löwenanteil der Ruhelast genau dort. Er wechselt aber
+  praktisch nie; jetzt wird er behalten und erst verworfen, wenn die Abfrage
+  fehlschlägt, also nach einem Neustart des Docks.
+- **Die Tonanzeige setzt je Bild nur noch Höhe und Deckkraft.** Farbe und
+  Eckenrundung hängen nicht am Pegel und wurden trotzdem dreißigmal je Sekunde
+  neu gesetzt – jede Farbe kostete dabei ein neues `CGColor`, siebenmal je
+  Bild.
+- **Der Lauftext hält zwischen den Durchläufen an.** Solange sich nichts
+  bewegt, muss die Glasfläche auch nicht neu gemischt werden. Zusammen mit dem
+  langsameren Lauf ist er aus der Messung praktisch verschwunden.
 
 Frühere Runde: der Dock-Prozess wird nur alle zwei Sekunden gesucht (die
 Prozessliste zu durchsuchen kostete 0,2 ms je Takt), und hat sich die

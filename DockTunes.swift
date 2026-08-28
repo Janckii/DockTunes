@@ -978,17 +978,26 @@ private enum Dock {
     /// Die Prozessliste zu durchsuchen kostet 0,2 ms – bei 60 Abfragen je Sekunde
     /// ist das der teuerste Posten. Der Dock-Prozess wechselt praktisch nie,
     /// also reicht ein Blick alle zwei Sekunden.
+    /// Der Dock-Prozess wechselt praktisch nie. Ihn alle zwei Sekunden in der
+    /// Prozessliste zu suchen war im Leerlauf der groesste Posten (gemessen:
+    /// der Loewenanteil der Ruhelast steckte in dieser Suche). Deshalb wird er
+    /// behalten und erst verworfen, wenn die Abfrage fehlschlaegt – dann ist
+    /// der Dock neu gestartet. Nur in diesem Fall wird wieder gesucht, und
+    /// hoechstens alle zwei Sekunden.
     private static func element() -> AXUIElement? {
+        if let cachedElement { return cachedElement }
         let now = Date()
-        if let cachedElement, now.timeIntervalSince(lastLookup) < 2 { return cachedElement }
+        guard now.timeIntervalSince(lastLookup) >= 2 else { return nil }
+        lastLookup = now
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.dock" })
         else { return nil }
-        lastLookup = now
-        if app.processIdentifier != cachedPID || cachedElement == nil {
-            cachedPID = app.processIdentifier
-            cachedElement = AXUIElementCreateApplication(app.processIdentifier)
-        }
+        cachedPID = app.processIdentifier
+        cachedElement = AXUIElementCreateApplication(app.processIdentifier)
         return cachedElement
+    }
+
+    private static func forget() {
+        cachedElement = nil
     }
 
     /// Rechteck des sichtbaren Dock-Glases in Fensterkoordinaten.
@@ -996,7 +1005,10 @@ private enum Dock {
         guard let dock = element() else { return nil }
         var childrenValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(dock, kAXChildrenAttribute as CFString, &childrenValue) == .success,
-              let children = childrenValue as? [AXUIElement] else { return nil }
+              let children = childrenValue as? [AXUIElement] else {
+            forget()          // Dock neu gestartet: beim naechsten Mal neu suchen
+            return nil
+        }
 
         for child in children {
             var roleValue: CFTypeRef?
@@ -1309,10 +1321,10 @@ private final class SpectrumView: NSView {
             guard bands.count == oldValue.count else { rebuild(); return }
             // Unter einem Achtel Punkt ist der Unterschied nicht zu sehen.
             guard zip(bands, oldValue).contains(where: { abs($0 - $1) > 0.004 }) else { return }
-            apply()
+            applyLevels()
         }
     }
-    var tone: NSColor = .labelColor { didSet { apply() } }
+    var tone: NSColor = .labelColor { didSet { applyShape() } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1326,21 +1338,47 @@ private final class SpectrumView: NSView {
     }
 
     private func rebuild() {
-        guard bands.count != bars.count else { apply(); return }
-        bars.forEach { $0.removeFromSuperlayer() }
-        bars = bands.map { _ in
-            let bar = CALayer()
-            bar.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-            layer?.addSublayer(bar)
-            return bar
+        if bands.count != bars.count {
+            bars.forEach { $0.removeFromSuperlayer() }
+            bars = bands.map { _ in
+                let bar = CALayer()
+                bar.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+                layer?.addSublayer(bar)
+                return bar
+            }
         }
-        apply()
+        applyShape()
+        applyLevels()
     }
 
-    private func apply() {
+    /// Alles, was nur von der Groesse und der Farbe abhaengt. Getrennt vom
+    /// Pegel, weil es dreissigmal je Sekunde unveraendert neu gesetzt wuerde –
+    /// und weil jede Farbe sonst ein neues CGColor kostet, siebenmal je Bild.
+    private func applyShape() {
+        guard !bars.isEmpty, bounds.width > 0 else { return }
+        let barWidth = self.barWidth
+        guard barWidth > 0.5 else { return }
+        let color = tone.withAlphaComponent(1).cgColor
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for bar in bars {
+            bar.cornerRadius = barWidth / 2
+            bar.backgroundColor = color
+        }
+        CATransaction.commit()
+    }
+
+    private var barWidth: CGFloat {
+        let gap: CGFloat = 2
+        return (bounds.width - gap * CGFloat(max(1, bars.count) - 1)) / CGFloat(max(1, bars.count))
+    }
+
+    /// Je Bild nur zwei Werte: Hoehe und Deckkraft. Beides bewegt der
+    /// Compositor, ohne dass etwas neu gezeichnet wird.
+    private func applyLevels() {
         guard !bars.isEmpty, bounds.width > 0 else { return }
         let gap: CGFloat = 2
-        let barWidth = (bounds.width - gap * CGFloat(bars.count - 1)) / CGFloat(bars.count)
+        let barWidth = self.barWidth
         guard barWidth > 0.5 else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)      // kein Nachziehen, der Wert gilt sofort
@@ -1350,8 +1388,7 @@ private final class SpectrumView: NSView {
             bar.frame = CGRect(x: CGFloat(i) * (barWidth + gap),
                                y: (bounds.height - height) / 2,
                                width: barWidth, height: height)
-            bar.cornerRadius = barWidth / 2
-            bar.backgroundColor = tone.withAlphaComponent(0.35 + 0.5 * value).cgColor
+            bar.opacity = Float(0.35 + 0.5 * value)
         }
         CATransaction.commit()
     }
@@ -1991,11 +2028,21 @@ private final class PlayerView: NSView {
         marquee.contentsScale = window?.backingScaleFactor ?? 2
         marquee.frame = CGRect(origin: .zero, size: size)
         marquee.removeAnimation(forKey: "lauftext")
-        let move = CABasicAnimation(keyPath: "position.x")
-        move.byValue = -step
-        move.duration = Double(step) / 34      // Punkte je Sekunde
+        // Erst stehen bleiben, dann wandern. Die Pause laesst den Anfang des
+        // Titels lesen, bevor er losgeht – und sie kostet nichts: solange sich
+        // nichts bewegt, muss die Glasflaeche auch nicht neu gemischt werden.
+        // Am Ende steht der zweite Abzug genau dort, wo der erste stand, der
+        // Sprung zurueck auf null ist deshalb unsichtbar.
+        let pause: TimeInterval = 2.5
+        let travel = Double(step) / 20         // Punkte je Sekunde
+        let start = marquee.position.x
+        let move = CAKeyframeAnimation(keyPath: "position.x")
+        move.values = [start, start, start - step]
+        move.keyTimes = [0, NSNumber(value: pause / (pause + travel)), 1]
+        move.timingFunctions = [CAMediaTimingFunction(name: .linear),
+                                CAMediaTimingFunction(name: .linear)]
+        move.duration = pause + travel
         move.repeatCount = .infinity
-        move.timingFunction = CAMediaTimingFunction(name: .linear)
         marquee.add(move, forKey: "lauftext")
     }
 
