@@ -195,16 +195,6 @@ private enum SpotifyWeb {
         get { UserDefaults.standard.string(forKey: "spotifyClientID") }
         set { UserDefaults.standard.set(newValue, forKey: "spotifyClientID") }
     }
-    static var defaultPlaylist: Playlist? {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: "defaultPlaylist") else { return nil }
-            return try? JSONDecoder().decode(Playlist.self, from: data)
-        }
-        set {
-            let data = newValue.flatMap { try? JSONEncoder().encode($0) }
-            UserDefaults.standard.set(data, forKey: "defaultPlaylist")
-        }
-    }
 
     /// Zugangsdaten liegen in einer nur fuer den Benutzer lesbaren Datei
     /// (~/Library/Application Support/DockTunes/credentials.json, Rechte 0600).
@@ -281,7 +271,6 @@ private enum SpotifyWeb {
         setLinked(false)
         keychainSet(nil, for: "accessToken")
         keychainSet(nil, for: "refreshToken")
-        defaultPlaylist = nil
     }
 
     // MARK: Anmeldung (PKCE)
@@ -2357,6 +2346,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pollInterval: TimeInterval = 0
     private var repeatMode = 0
     private var noticeUntil = Date.distantPast
+    private var pickerCount = 0
     private var loopTimer: Timer?
     private var motionTimer: Timer?
     private var spectrumTimer: Timer?
@@ -2545,9 +2535,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             choose.target = self
             choose.isEnabled = !track.uri.isEmpty
             menu.addItem(choose)
-            if let current = SpotifyWeb.defaultPlaylist {
-                menu.addItem(disabledItem("Standard: " + current.name))
-            }
             let unlink = NSMenuItem(title: "Spotify-Verbindung trennen", action: #selector(unlinkSpotify), keyEquivalent: "")
             unlink.target = self
             menu.addItem(unlink)
@@ -2678,8 +2665,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard !track.uri.isEmpty else { return }
         guard SpotifyWeb.isLinked else { setUpSpotifyLink(); return }
-        guard let playlist = SpotifyWeb.defaultPlaylist else { choosePlaylist(); return }
-        addTrack(to: playlist, remember: false)
+        // Immer fragen: ohne Auswahl weiss niemand, wohin der Titel wandert,
+        // und die zuletzt benutzte Liste ist selten die gewollte.
+        choosePlaylist()
     }
 
     /// Kurze Rückmeldung am Knopf, damit der Klick sichtbar wirkt.
@@ -2711,13 +2699,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 let picker = PlaylistPicker(playlists: playlists) { [weak self] chosen in
-                    self?.addTrack(to: chosen, remember: true)
+                    self?.addTrack(to: chosen)
                 }
                 picker.onClose = { [weak self] in
                     self?.pickerClosedAt = Date()
                     self?.picker = nil
+                    self?.writeDiagnostics()
                 }
                 self.picker = picker
+                self.pickerCount = playlists.count
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.writeDiagnostics() }
                 // Ueber dem Plus-Knopf aufklappen
                 let button = self.view.addButton.frame
                 let anchor = self.panel.frame.origin
@@ -2726,8 +2717,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func addTrack(to playlist: SpotifyWeb.Playlist, remember: Bool) {
-        if remember { SpotifyWeb.defaultPlaylist = playlist }
+    private func addTrack(to playlist: SpotifyWeb.Playlist) {
         guard !track.uri.isEmpty else { return }
         SpotifyWeb.add(trackURI: track.uri, to: playlist) { [weak self] result in
             switch result {
@@ -3199,6 +3189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Dock gefunden            : \(dockFrame.map { "x=\(Int($0.minX)) y=\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "NEIN")",
             "Panel                    : x=\(Int(panel.frame.minX)) y=\(Int(panel.frame.minY)) \(Int(panel.frame.width))x\(Int(panel.frame.height)) Schluessel=\(panel.isKeyWindow)",
             "Panel sichtbar           : \(panel?.isVisible == true)",
+            "Auswahlfenster           : \(picker?.isVisible == true ? "offen mit \(pickerCount) Playlists" : "zu")",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",
             "Zugangs-Ablage           : \(SpotifyWeb.storageCheck())",
             "Symbolbreiten            : \(PlayerView.inkReport())",
