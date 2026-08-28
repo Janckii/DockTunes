@@ -47,7 +47,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Aktion | Wirkung |
 |---|---|
 | Klick auf Cover oder Text | Spotify in den Vordergrund holen |
-| Knöpfe rechts | zurück, abspielen/pausieren, weiter |
+| Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
 | Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
@@ -74,12 +74,18 @@ weniger als 200 Punkte nimmt das Panel nicht an.
 | 240 | Tonanzeige (wenn im Menü eingeschaltet) |
 | 300 | Zurück |
 | 360 | Playlist-Knopf |
+| 380 | Wiederholen |
 | 520 | Album, und Zeitleiste samt Zeiten dauerhaft statt nur beim Zeigen |
 | 700 | im Liedtext-Modus: die nächste Zeile als Vorschau |
 
 Die Reihenfolge folgt dem Nutzen: **weiter** ist wichtiger als zurück, und
 beides wichtiger als das Plus – im schmalsten Panel steht deshalb die
 Weiter-Taste, nicht der Playlist-Knopf.
+
+Der **Wiederholen-Knopf** steht ab der Normalgröße. Ist er aus, wird er
+gedimmt gezeigt statt ausgeblendet – so bleibt sichtbar, dass es die Wahl
+gibt. Er nimmt dem Titel 38 Punkte weg; bei der Normalgröße bleiben dem Text
+damit rund 120 Punkte, und was nicht hineinpasst, läuft durch.
 
 Die **Tonanzeige** läuft auch im schmalen Panel. Ob sie überhaupt erscheint,
 entscheidet der Schalter im Rechtsklick-Menü; sie weicht nur, wenn dem Titel

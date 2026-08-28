@@ -16,6 +16,7 @@ private struct Track: Equatable {
     var title = ""
     var artist = ""
     var album = ""
+    var repeating = false
     var artworkURL = ""
     var uri = ""
     var duration: TimeInterval = 0     // Sekunden
@@ -47,12 +48,14 @@ private enum Spotify {
               set trackName to name of current track
               set trackArtist to artist of current track
               set trackAlbum to album of current track
+              set trackRepeat to (repeating as string)
               set coverURL to artwork url of current track
               set trackLength to duration of current track
               set playPos to player position
               set trackURI to spotify url of current track
               return playerStatus & "\\n" & trackName & "\\n" & trackArtist & "\\n" & coverURL ¬
-                & "\\n" & trackLength & "\\n" & playPos & "\\n" & trackURI & "\\n" & trackAlbum
+                & "\\n" & trackLength & "\\n" & playPos & "\\n" & trackURI & "\\n" & trackAlbum ¬
+                & "\\n" & trackRepeat
             end tell
             """
             if let raw = runCached(source) {
@@ -63,6 +66,7 @@ private enum Spotify {
                     track.artist = parts[2]
                     track.artworkURL = parts[3]
                     if parts.count >= 8 { track.album = parts[7] }
+                    if parts.count >= 9 { track.repeating = parts[8] == "true" }
                     // Länge kommt in Millisekunden, Position in Sekunden.
                     track.duration = (number(parts[4]) ?? 0) / 1000
                     track.position = number(parts[5]) ?? 0
@@ -88,6 +92,10 @@ private enum Spotify {
     }
 
     /// Setzt die Lautstaerke unmittelbar.
+    static func setRepeating(_ on: Bool) {
+        send("set repeating to \(on)")
+    }
+
     static func setVolume(_ level: Int) {
         send("set sound volume to \(max(0, min(100, level)))")
     }
@@ -1404,6 +1412,10 @@ private final class PlayerView: NSView {
     let playButton = NSButton()
     let nextButton = NSButton()
     let addButton = NSButton()
+    let repeatButton = NSButton()
+    /// Aus wird gedimmt gezeigt, nicht ausgeblendet – so bleibt sichtbar,
+    /// dass es die Wahl gibt.
+    var repeatOn = false { didSet { repeatButton.alphaValue = repeatOn ? 1 : 0.45 } }
     let progressBar = ProgressBar()
     let timeLabel = NSTextField(labelWithString: "")
     let totalLabel = NSTextField(labelWithString: "")
@@ -1421,6 +1433,7 @@ private final class PlayerView: NSView {
     private var showsArtistLine: Bool { true }
     private var showsPreviousButton: Bool { bounds.width >= 300 }
     private var showsAddButton: Bool { bounds.width >= 360 }
+    private var showsRepeatButton: Bool { bounds.width >= 380 }
     var showsExtras: Bool { bounds.width >= 520 }
     /// Ganz breit ist auch fuer die naechste Liedtextzeile Platz – dann
     /// verdraengt sie die laufende nicht mehr.
@@ -1510,6 +1523,7 @@ private final class PlayerView: NSView {
             (previousButton, "backward.fill", "Vorheriger Titel"),
             (playButton, "play.fill", "Abspielen"),
             (nextButton, "forward.fill", "Nächster Titel"),
+            (repeatButton, "repeat", "Titel wiederholen"),
             (addButton, "plus.circle", "Zur Playlist hinzufügen"),
         ] {
             button.isBordered = false
@@ -1894,7 +1908,7 @@ private final class PlayerView: NSView {
     func applyColors() {
         applyFill()
         applyRim()
-        for button in [previousButton, playButton, nextButton, addButton] {
+        for button in [previousButton, playButton, nextButton, addButton, repeatButton] {
             button.contentTintColor = primaryColor
             button.wantsLayer = true
             button.layer?.shadowColor = NSColor.black.cgColor
@@ -2122,10 +2136,11 @@ private final class PlayerView: NSView {
         var x = bounds.width - pad
         // x wandert von rechts nach links und markiert immer die Kante der
         // gezeichneten Flaeche – die Raender des Symbols werden herausgerechnet.
-        let keys = ["plus", "next", "play", "previous"]
+        let keys = ["plus", "repeat", "next", "play", "previous"]
         previousButton.isHidden = !showsPreviousButton
         addButton.isHidden = !showsAddButton
-        for (index, button) in [addButton, nextButton, playButton, previousButton].enumerated() {
+        repeatButton.isHidden = !showsRepeatButton
+        for (index, button) in [addButton, repeatButton, nextButton, playButton, previousButton].enumerated() {
             if button.isHidden { continue }
             let key = keys[index] + (button === playButton ? (button.image?.accessibilityDescription ?? "") : "")
             let ink = Self.ink(of: button.image, key: key)
@@ -2368,6 +2383,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.playButton.action = #selector(playPause)
         view.nextButton.target = self
         view.nextButton.action = #selector(nextTrack)
+        view.repeatButton.target = self
+        view.repeatButton.action = #selector(toggleRepeat)
         view.addButton.target = self
         view.addButton.action = #selector(addToPlaylist)
         view.onClick = { [weak self] in self?.openSpotify() }
@@ -2746,6 +2763,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.positionAnchor = (new.position, Date())
             if !wasSame || artworkChanged { self.applyTrack(new, reloadArtwork: artworkChanged) }
             if playChanged { self.syncPollRate() }
+            self.view.repeatOn = new.repeating
             self.updateProgress()
         }
     }
@@ -2859,6 +2877,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         followDock()
         updateText()                   // Album und Vorschau haengen an der Breite
         view.menu = buildContextMenu()
+    }
+
+    @objc private func toggleRepeat() {
+        let next = !track.repeating
+        Spotify.setRepeating(next)
+        track.repeating = next
+        view.repeatOn = next
+        // Spotify braucht einen Moment; danach den echten Stand holen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.refreshTrack() }
     }
 
     @objc private func toggleLyrics() {
