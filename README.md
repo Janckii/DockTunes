@@ -38,8 +38,7 @@ but tied to the content — each one brings something visible.
 
 ![Width steps](docs/widths.png)
 
-**Lyrics.** Only the current line, wrapped across two when it does not fit,
-visibly truncated when even that is not enough.
+**Lyrics.** Only the current line, wrapped across two when it does not fit.
 
 ![Lyrics](docs/lyrics.png)
 
