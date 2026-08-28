@@ -2347,6 +2347,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var repeatMode = 0
     private var noticeUntil = Date.distantPast
     private var pickerCount = 0
+    private var followLog: [String] = []
+    private var lastFollowWrite = Date.distantPast
     private var loopTimer: Timer?
     private var motionTimer: Timer?
     private var spectrumTimer: Timer?
@@ -3097,6 +3099,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Dem Dock folgen
 
+    /// Kurzes Gedaechtnis fuer die letzten Auffaelligkeiten beim Nachfuehren.
+    /// Steht in der Selbstpruefung; ohne das laesst sich ein Aufblitzen beim
+    /// Bildschirmwechsel nicht nachvollziehen, es ist zu kurz zum Hinsehen.
+    private func noteFollow(_ text: String) {
+        let stamp = String(format: "%.2f", Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 1000))
+        followLog.append("\(stamp) \(text)")
+        if followLog.count > 12 { followLog.removeFirst() }
+        // Hoechstens einmal je Sekunde schreiben – waehrend eines Wechsels
+        // faellt das sonst sechzigmal an.
+        if Date().timeIntervalSince(lastFollowWrite) > 1 {
+            lastFollowWrite = Date()
+            writeDiagnostics()
+        }
+    }
+
     private func followDock() {
         // Der Dock aendert seine Groesse nur aus zwei Gruenden: der Zeiger ist
         // bei ihm (Vergroesserung) oder er faehrt ein und aus. Beides passiert
@@ -3122,11 +3139,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         idleTicks = 0
 
-        guard track.hasTrack, let dockFrame = Dock.frame(),
-              let screen = NSScreen.screens.first(where: { $0.frame.intersects(dockFrame) }),
-              screen.frame.contains(dockFrame)
-        else {
-            if panel.isVisible { panel.orderOut(nil); writeDiagnostics() }
+        guard track.hasTrack, let dockFrame = Dock.frame() else {
+            // Kein Dock zu finden: Vollbild, automatisches Ausblenden oder kein
+            // Titel. Dann gehoert das Panel sofort weg.
+            if panel.isVisible {
+                panel.orderOut(nil)
+                noteFollow("verborgen: kein Dock")
+                writeDiagnostics()
+            }
+            return
+        }
+        guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(dockFrame) }),
+              screen.frame.contains(dockFrame) else {
+            // Der Dock wandert gerade zwischen den Bildschirmen; sein Rechteck
+            // passt dabei auf keinen einzelnen. Frueher wurde das Panel hier
+            // ausgeblendet und gleich darauf wieder eingeblendet – genau das
+            // war das kurze Aufblitzen beim Bildschirmwechsel. Jetzt bleibt es
+            // einfach stehen, bis der Dock wieder auf einem Schirm sitzt.
+            noteFollow("Wechsel: \(Int(dockFrame.minX)),\(Int(dockFrame.minY)) \(Int(dockFrame.width))x\(Int(dockFrame.height))")
             return
         }
 
@@ -3190,6 +3220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Panel                    : x=\(Int(panel.frame.minX)) y=\(Int(panel.frame.minY)) \(Int(panel.frame.width))x\(Int(panel.frame.height)) Schluessel=\(panel.isKeyWindow)",
             "Panel sichtbar           : \(panel?.isVisible == true)",
             "Auswahlfenster           : \(picker?.isVisible == true ? "offen mit \(pickerCount) Playlists" : "zu")",
+            "Nachfuehren, zuletzt     : \(followLog.isEmpty ? "nichts" : followLog.joined(separator: " | "))",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",
             "Zugangs-Ablage           : \(SpotifyWeb.storageCheck())",
             "Symbolbreiten            : \(PlayerView.inkReport())",

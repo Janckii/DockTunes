@@ -269,7 +269,14 @@ Das Panel folgt der Position des Docks:
   grenzwertig – ein Kompromiss zugunsten der Dock-Optik.
 - Es wächst und wandert mit, wenn sich die Dock-Breite ändert.
 - Verschwindet das Dock (Vollbild, automatisches Ausblenden), verschwindet das
-  Panel mit.
+  Panel mit. **Beim Wechsel zwischen Bildschirmen aber nicht**: der Dock meldet
+  dabei kurz ein Rechteck, das auf keinen Bildschirm passt (nachgelesen im
+  Protokoll: `779,-51`, `3019,97`, `774,-36`). Früher wurde das Panel deshalb
+  aus- und einen Wimpernschlag später wieder eingeblendet – das war das kurze
+  Aufblitzen. Jetzt bleibt es stehen, bis der Dock wieder auf einem Schirm
+  sitzt. Nachgemessen an einer Bildschirmaufnahme über gleichmäßigem Grund:
+  die Fläche springt von 71 (Hintergrund) unmittelbar auf ihren Endwert 106,7
+  und bleibt dort, ohne ein einziges helleres Bild dazwischen.
 - Es ist auf allen Schreibtischen sichtbar und liegt auf derselben
   Fensterebene wie das Dock.
 - Ohne laufendes Spotify oder ohne geladenen Titel bleibt es unsichtbar.
