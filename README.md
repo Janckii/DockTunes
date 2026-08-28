@@ -183,6 +183,12 @@ Angemeldet wird per PKCE, es liegt also kein Geheimnis in der App. Die
 Zugangsdaten landen in `~/Library/Application Support/DockTunes/credentials.json`
 mit Rechten 0600.
 
+Die Datei wird bewusst **ohne** `.completeFileProtection` geschrieben. Diese
+Schutzklasse stammt aus der iOS-Welt und macht die Datei auf macOS unlesbar –
+nachgemessen wurde sie danach selbst für die App und für den Eigentümer mit
+„Operation not permitted" abgewiesen, obwohl die Rechte 0600 lauteten. Der
+Schutz sind hier die Dateirechte.
+
 ## Einstellungen
 
 Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:

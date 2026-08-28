@@ -233,7 +233,12 @@ private enum SpotifyWeb {
         var store = loadStore()
         if let value { store[account] = value } else { store.removeValue(forKey: account) }
         guard let data = try? JSONEncoder().encode(store) else { return }
-        try? data.write(to: storeURL, options: [.atomic, .completeFileProtection])
+        // Ohne .completeFileProtection: diese Schutzklasse macht die Datei auf
+        // macOS unlesbar – nachgemessen wurde sie danach selbst fuer die App
+        // selbst und fuer den Eigentuemer mit "Operation not permitted"
+        // abgewiesen, obwohl die Rechte 0600 lauteten. Der Schutz sind hier die
+        // Dateirechte, nicht eine Klasse aus der iOS-Welt.
+        try? data.write(to: storeURL, options: [.atomic])
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storeURL.path)
     }
 
