@@ -52,7 +52,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
 | Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
 | Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie kurz an |
-| Rechtsklick | Menü mit allen Einstellungen |
+| Rechtsklick | Menü mit allen Einstellungen, auch der Breite im Liedtext-Modus |
 
 ## Liedtext
 
@@ -70,6 +70,12 @@ steht der Text plötzlich anders da und der Wechsel geht unter.
 
 Vor der ersten Zeile und in Instrumentalpausen stehen Titel und Interpret
 statt einer leeren Fläche.
+
+Die Breite des Panels ist im Liedtext-Modus fest – mitwandernd wäre sie bei
+jeder Textzeile eine andere und das Panel ständig in Bewegung. Einstellbar über
+das Rechtsklick-Menü, **Breite des Liedtexts**: Schmal (420), Normal (520),
+Breit (640), Sehr breit (760). Zwischenwerte über `lyricsWidth`, siehe
+Einstellungen.
 
 Die Texte kommen von [lrclib.net](https://lrclib.net), einem offenen
 Verzeichnis ohne Anmeldung. Dorthin gehen Titel und Interpret des laufenden
@@ -109,7 +115,7 @@ Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
 defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
 defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
 defaults write de.jancko.docktunes rimAlpha -float 0.30   # Stärke der Lichtkante
-defaults write de.jancko.docktunes lyricsWidth -float 520 # Panelbreite im Liedtext-Modus
+defaults write de.jancko.docktunes lyricsWidth -float 580 # Breite im Liedtext-Modus (240–900)
 ```
 
 ---

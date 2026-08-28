@@ -2283,6 +2283,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lyricsItem.target = self
         lyricsItem.state = lyricsMode ? .on : .off
         menu.addItem(lyricsItem)
+        if lyricsMode {
+            // Nur im Liedtext-Modus sichtbar: sonst richtet sich die Breite
+            // nach dem Inhalt und waere gar nicht einstellbar.
+            let current = UserDefaults.standard.object(forKey: "lyricsWidth") as? Double ?? 520
+            let widthMenu = NSMenu()
+            for (title, value) in [("Schmal", 420.0), ("Normal", 520.0),
+                                   ("Breit", 640.0), ("Sehr breit", 760.0)] {
+                let item = NSMenuItem(title: title, action: #selector(setLyricsWidth(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = value
+                item.state = abs(current - value) < 1 ? .on : .off
+                widthMenu.addItem(item)
+            }
+            let widthItem = NSMenuItem(title: "Breite des Liedtexts", action: nil, keyEquivalent: "")
+            widthItem.submenu = widthMenu
+            menu.addItem(widthItem)
+        }
         let spectrumItem = NSMenuItem(title: "Tonanalyse anzeigen", action: #selector(toggleSpectrum), keyEquivalent: "")
         spectrumItem.target = self
         spectrumItem.state = spectrumEnabled ? .on : .off
@@ -2621,6 +2638,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func setVolumeSource(_ sender: NSMenuItem) {
         guard let wantsSystem = sender.representedObject as? Bool else { return }
         UserDefaults.standard.set(wantsSystem, forKey: "systemVolume")
+        view.menu = buildContextMenu()
+    }
+
+    @objc private func setLyricsWidth(_ sender: NSMenuItem) {
+        guard let width = sender.representedObject as? Double else { return }
+        UserDefaults.standard.set(width, forKey: "lyricsWidth")
+        lastDockFrame = .null          // Breite geaendert, Position neu setzen
+        followDock()
         view.menu = buildContextMenu()
     }
 
