@@ -52,7 +52,32 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
 | Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
 | Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie kurz an |
-| Rechtsklick | Menü mit allen Einstellungen, auch der Breite im Liedtext-Modus |
+| An der äußeren Kante ziehen | Breite ändern, wie bei einem Fenster |
+| Rechtsklick | Menü mit allen Einstellungen |
+
+## Breite
+
+Die Breite ist **fest** und wird nicht vom Titel bestimmt. Eine mitwandernde
+Breite wäre bei jedem Lied eine andere, und das Panel wäre ständig in Bewegung.
+
+Geändert wird sie durch Ziehen an der äußeren Kante – der, die vom Dock
+wegzeigt. Fährt der Zeiger über das Panel, erscheint dort eine kurze senkrechte
+Marke; die sechs Punkte davor sind die Ziehfläche. Unter 200 Punkten geht es
+nicht, darüber bis knapp an den Bildschirmrand.
+
+**Je breiter, desto mehr steht drin:**
+
+| ab | kommt dazu |
+|---|---|
+| 200 | Cover, Titel, Abspielen/Pause, Playlist-Knopf |
+| 260 | Interpret |
+| 320 | Vor und Zurück |
+| 400 | Tonanzeige |
+| 560 | Album, und Zeitleiste samt Zeiten dauerhaft statt nur beim Zeigen |
+| 700 | im Liedtext-Modus: die nächste Zeile als Vorschau |
+
+Normal- und Liedtext-Modus merken sich ihre Breite getrennt – der Liedtext
+braucht mehr Platz als Cover, Titel und Knöpfe.
 
 ## Liedtext
 
@@ -71,11 +96,9 @@ steht der Text plötzlich anders da und der Wechsel geht unter.
 Vor der ersten Zeile und in Instrumentalpausen stehen Titel und Interpret
 statt einer leeren Fläche.
 
-Die Breite des Panels ist im Liedtext-Modus fest – mitwandernd wäre sie bei
-jeder Textzeile eine andere und das Panel ständig in Bewegung. Einstellbar über
-das Rechtsklick-Menü, **Breite des Liedtexts**: Schmal (420), Normal (520),
-Breit (640), Sehr breit (760). Zwischenwerte über `lyricsWidth`, siehe
-Einstellungen.
+Ab 700 Punkten Breite steht die nächste Zeile wieder darunter – dort nimmt sie
+der laufenden nichts weg. Die Breite lässt sich ziehen oder im Rechtsklick-Menü
+in vier Stufen wählen.
 
 Die Texte kommen von [lrclib.net](https://lrclib.net), einem offenen
 Verzeichnis ohne Anmeldung. Dorthin gehen Titel und Interpret des laufenden
@@ -115,7 +138,8 @@ Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
 defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
 defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
 defaults write de.jancko.docktunes rimAlpha -float 0.30   # Stärke der Lichtkante
-defaults write de.jancko.docktunes lyricsWidth -float 580 # Breite im Liedtext-Modus (240–900)
+defaults write de.jancko.docktunes panelWidth -float 460  # Breite, normal
+defaults write de.jancko.docktunes lyricsWidth -float 580 # Breite im Liedtext-Modus
 ```
 
 ---
@@ -280,6 +304,22 @@ Dieselben Werte wie im normalen Modus:
 Play und Pause sind unterschiedlich geformt und brauchen je einen eigenen
 Feinversatz – mit einem gemeinsamen Wert lag der Abstand beim Pause-Zeichen um
 einen Punkt daneben.
+
+## Kein Größenzeiger
+
+An der Ziehkante wechselt der Mauszeiger **nicht** auf das Größensymbol, und
+das ist keine Nachlässigkeit: den Zeiger bestimmt die aktive Anwendung.
+DockTunes aktiviert sich nie – Klicks aufs Panel sollen den Fokus nicht
+stehlen, das ist eine der Grundbedingungen.
+
+Nachgeprüft, nicht vermutet: `NSCursor.set()` bleibt wirkungslos, auch für die
+ganze Panelfläche und auch zehnmal je Sekunde wiederholt. `cursorUpdate` und
+`mouseMoved` erreichen ein Fenster ohne Fokus gar nicht erst (`mouseEntered`
+schon – daran hängt jetzt die Marke). Der einzige Weg wäre, das Panel zum
+Schlüsselfenster zu machen, und damit wäre der Fokus weg.
+
+Deshalb markiert das Panel die Kante selbst: eine kurze senkrechte Linie, die
+beim Zeigen erscheint – so wie der Dock seine Trennlinie zeigt.
 
 ## Signatur
 

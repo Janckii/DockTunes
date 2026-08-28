@@ -15,6 +15,7 @@ private struct Track: Equatable {
     var isPlaying = false
     var title = ""
     var artist = ""
+    var album = ""
     var artworkURL = ""
     var uri = ""
     var duration: TimeInterval = 0     // Sekunden
@@ -45,12 +46,13 @@ private enum Spotify {
               set playerStatus to (player state as text)
               set trackName to name of current track
               set trackArtist to artist of current track
+              set trackAlbum to album of current track
               set coverURL to artwork url of current track
               set trackLength to duration of current track
               set playPos to player position
               set trackURI to spotify url of current track
               return playerStatus & "\\n" & trackName & "\\n" & trackArtist & "\\n" & coverURL ¬
-                & "\\n" & trackLength & "\\n" & playPos & "\\n" & trackURI
+                & "\\n" & trackLength & "\\n" & playPos & "\\n" & trackURI & "\\n" & trackAlbum
             end tell
             """
             if let raw = runCached(source) {
@@ -60,6 +62,7 @@ private enum Spotify {
                     track.title = parts[1]
                     track.artist = parts[2]
                     track.artworkURL = parts[3]
+                    if parts.count >= 8 { track.album = parts[7] }
                     // Länge kommt in Millisekunden, Position in Sekunden.
                     track.duration = (number(parts[4]) ?? 0) / 1000
                     track.position = number(parts[5]) ?? 0
@@ -1368,7 +1371,21 @@ private final class PlayerView: NSView {
     let timeLabel = NSTextField(labelWithString: "")
     let totalLabel = NSTextField(labelWithString: "")
     let spectrum = SpectrumView()
-    var showsSpectrum = false { didSet { spectrum.isHidden = !showsSpectrum; needsLayout = true } }
+    var showsSpectrum = false { didSet { needsLayout = true } }
+
+    // Was bei welcher Breite dazukommt. Die Grenzen sind so gesetzt, dass ein
+    // Element erst erscheint, wenn es ohne Gedraenge Platz hat – nicht sobald
+    // es rechnerisch gerade so hineinpasst.
+    private var showsArtistLine: Bool { bounds.width >= 260 }
+    private var showsSkipButtons: Bool { bounds.width >= 320 }
+    private var spectrumVisible: Bool { showsSpectrum && bounds.width >= 400 }
+    var showsExtras: Bool { bounds.width >= 560 }
+    /// Ganz breit ist auch fuer die naechste Liedtextzeile Platz – dann
+    /// verdraengt sie die laufende nicht mehr.
+    var showsLyricPreview: Bool { bounds.width >= 700 }
+    /// Bei grosser Breite sieht das Panel dauerhaft so aus wie sonst beim
+    /// Zeigen: Leiste und Zeiten sichtbar, Inhalt entsprechend angehoben.
+    private var effectiveHover: CGFloat { showsExtras ? 1 : hoverProgress }
     var showsLyrics = false { didSet { cover.isHidden = showsLyrics; needsLayout = true } }
 
     private var glassView: NSView!
@@ -1380,6 +1397,7 @@ private final class PlayerView: NSView {
     private var tracking: NSTrackingArea?
     private var hoverProgress: CGFloat = 0
     private var hoverTimer: Timer?
+    private let gripMark = NSView()
 
     var onClick: (() -> Void)?
     var onHoverChange: ((Bool) -> Void)?
@@ -1417,6 +1435,11 @@ private final class PlayerView: NSView {
         content.addSubview(shade, positioned: .below, relativeTo: nil)
         // Additive Schicht: hebt die Flaeche an, ohne die Steigung zu aendern.
         // Nur so lassen sich Helligkeit und Durchlaessigkeit getrennt stellen.
+        gripMark.wantsLayer = true
+        gripMark.alphaValue = 0
+        gripMark.layer?.cornerRadius = 1
+        content.addSubview(gripMark)
+
         boost.wantsLayer = true
         content.addSubview(boost, positioned: .below, relativeTo: shade)
 
@@ -1531,7 +1554,45 @@ private final class PlayerView: NSView {
             .withSymbolConfiguration(configuration)
     }
 
-    override func mouseDown(with event: NSEvent) { onClick?() }
+    // MARK: Breite ziehen
+
+    /// Die Ziehzone liegt auf der Kante, die vom Dock wegzeigt. Sechs Punkte
+    /// breit; der Rahmen des Plus-Knopfs endet sieben Punkte vor der Kante,
+    /// die beiden ueberschneiden sich also nicht.
+    var gripOnRight = true
+    var onResize: ((CGFloat) -> Void)?
+    var onResizeEnd: (() -> Void)?
+    private var resizing = false
+    private var resizeStartWidth: CGFloat = 0
+    private var resizeStartX: CGFloat = 0
+
+    var gripRect: NSRect {
+        let w: CGFloat = 6
+        return gripOnRight ? NSRect(x: bounds.width - w, y: 0, width: w, height: bounds.height)
+                           : NSRect(x: 0, y: 0, width: w, height: bounds.height)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if gripRect.contains(convert(event.locationInWindow, from: nil)) {
+            resizing = true
+            resizeStartWidth = bounds.width
+            resizeStartX = NSEvent.mouseLocation.x
+            return
+        }
+        onClick?()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard resizing else { return }
+        let dx = NSEvent.mouseLocation.x - resizeStartX
+        onResize?(resizeStartWidth + (gripOnRight ? dx : -dx))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard resizing else { return }
+        resizing = false
+        onResizeEnd?()
+    }
 
     var onScroll: ((Int) -> Void)?
     private var scrollAccumulator: CGFloat = 0
@@ -1853,6 +1914,19 @@ private final class PlayerView: NSView {
     override func mouseEntered(with event: NSEvent) { setHovering(true) }
     override func mouseExited(with event: NSEvent) { setHovering(false) }
 
+    /// Ein Groessenzeiger ist hier nicht zu haben: den Mauszeiger bestimmt die
+    /// aktive Anwendung, und DockTunes aktiviert sich nie – Klicks aufs Panel
+    /// sollen ja den Fokus nicht stehlen. Nachgeprueft: NSCursor.set() bleibt
+    /// wirkungslos, auch fuer das ganze Panel und auch wiederholt gesetzt.
+    /// Also markiert das Panel die Kante selbst, so wie der Dock seine
+    /// Trennlinie zeigt.
+    private func showGripMark(_ on: Bool) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            gripMark.animator().alphaValue = on ? 1 : 0
+        }
+    }
+
     /// Blendet die Leiste unabhaengig vom Zeigen ein – fuer die Lautstaerke.
     func forceProgressVisible(_ visible: Bool) {
         progressBar.isHidden = false
@@ -1868,6 +1942,7 @@ private final class PlayerView: NSView {
     private func setHovering(_ value: Bool) {
         guard value != isHovering else { return }
         isHovering = value
+        showGripMark(value)
         startHoverAnimation()
         onHoverChange?(value)
     }
@@ -1884,11 +1959,14 @@ private final class PlayerView: NSView {
                 timer.invalidate()
                 self.hoverTimer = nil
             }
-            self.progressBar.alphaValue = self.hoverProgress
-            self.timeLabel.alphaValue = self.hoverProgress
-            self.totalLabel.alphaValue = self.hoverProgress
+            // Ab der grossen Breite stehen Leiste und Zeiten dauerhaft da –
+            // dann ist Platz dafuer, und sie sind der Hauptgewinn der Breite.
+            let shown = self.effectiveHover
+            self.progressBar.alphaValue = shown
+            self.timeLabel.alphaValue = shown
+            self.totalLabel.alphaValue = shown
             // Unsichtbar darf sie keine Klicks abfangen.
-            self.progressBar.isHidden = self.hoverProgress < 0.03
+            self.progressBar.isHidden = shown < 0.03
             self.needsLayout = true
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -1909,7 +1987,7 @@ private final class PlayerView: NSView {
         let textWidth = min(max(ceil(max(titleWidth, artistWidth)) + 3, 90), showsLyrics ? 330 : 190)
         let buttons = 4 * min(26, height - pad * 2) + 3 * 4
         var total = pad + coverSize + (showsLyrics ? 0 : gap) + textWidth + gap + buttons + pad
-        if showsSpectrum { total += 30 + gap }
+        if spectrumVisible { total += 30 + gap }
         return ceil(total)
     }
 
@@ -1922,7 +2000,7 @@ private final class PlayerView: NSView {
         let radius = min(bounds.height * 0.38, 22)
         // Einmal auf ganze Punkte gerundet: sonst gleitet das Cover, waehrend
         // die Knoepfe (deren Rahmen gerundet werden) einen Tick spaeter springen.
-        let lift = round(4 * hoverProgress)
+        let lift = round(4 * effectiveHover)
 
         glassView.frame = bounds
         content.frame = bounds
@@ -1932,6 +2010,25 @@ private final class PlayerView: NSView {
         shade.frame = bounds
         shade.layer?.cornerRadius = radius
         shade.layer?.masksToBounds = true
+        // Griffmarke auf der Ziehkante: zwei Punkte breit, drei vom Rand.
+        // Der Rahmen des Plus-Knopfs endet sieben Punkte vor der Kante, sie
+        // stoesst also an nichts an.
+        let markHeight: CGFloat = 14
+        gripMark.frame = CGRect(x: gripOnRight ? bounds.width - 5 : 3,
+                                y: round((bounds.height - markHeight) / 2),
+                                width: 2, height: markHeight)
+        gripMark.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.45).cgColor
+
+        // Die Deckkraft haengt sonst nur am Hover-Takt, der bei grosser Breite
+        // nie laeuft – dann blieben Leiste und Zeiten unsichtbar.
+        let shown = effectiveHover
+        if progressBar.alphaValue != shown {
+            progressBar.alphaValue = shown
+            timeLabel.alphaValue = shown
+            totalLabel.alphaValue = shown
+            progressBar.isHidden = shown < 0.03
+        }
+
         boost.frame = bounds
         boost.layer?.cornerRadius = radius
         boost.layer?.masksToBounds = true
@@ -1954,7 +2051,10 @@ private final class PlayerView: NSView {
         // x wandert von rechts nach links und markiert immer die Kante der
         // gezeichneten Flaeche – die Raender des Symbols werden herausgerechnet.
         let keys = ["plus", "next", "play", "previous"]
+        previousButton.isHidden = !showsSkipButtons
+        nextButton.isHidden = !showsSkipButtons
         for (index, button) in [addButton, nextButton, playButton, previousButton].enumerated() {
+            if button.isHidden { continue }
             let key = keys[index] + (button === playButton ? (button.image?.accessibilityDescription ?? "") : "")
             let ink = Self.ink(of: button.image, key: key)
             // Rest-Versatz aus der Nachmessung am gezeichneten Bild. Play und
@@ -1978,7 +2078,8 @@ private final class PlayerView: NSView {
         var rightEdge = x + symbolGap - gap - 2
 
         // Tonanzeige davor
-        if showsSpectrum {
+        spectrum.isHidden = !spectrumVisible
+        if spectrumVisible {
             let spectrumWidth: CGFloat = 30
             let spectrumHeight: CGFloat = 20
             spectrum.frame = CGRect(x: rightEdge - spectrumWidth,
@@ -1992,7 +2093,13 @@ private final class PlayerView: NSView {
         let textWidth = max(20, rightEdge - textLeft)
         let lineHeight: CGFloat = 14
         let top = (bounds.height - lineHeight * 2) / 2
-        if wrapsText {
+        artistLabel.isHidden = wrapsText || !showsArtistLine
+        if !wrapsText && !showsArtistLine {
+            // Nur der Titel: dann steht er mittig, nicht auf der oberen der
+            // beiden Zeilen.
+            titleLabel.frame = CGRect(x: textLeft, y: round((bounds.height - lineHeight) / 2) + lift,
+                                      width: textWidth, height: lineHeight)
+        } else if wrapsText {
             // Eine Zeile sitzt mittig, zwei belegen dasselbe Band wie sonst
             // Titel und Interpret – so stoesst der Text nicht an die Zeitleiste.
             let needed = titleLabel.attributedStringValue.boundingRect(
@@ -2081,6 +2188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var progressTimer: Timer?
     private var pollTimer: Timer?
     private var pollInterval: TimeInterval = 0
+    /// Breite waehrend des Ziehens; erst beim Loslassen gesichert.
+    private var pendingWidth: CGFloat?
     private var motionTimer: Timer?
     private var spectrumTimer: Timer?
     private let analyzer = AudioSpectrum()
@@ -2097,14 +2206,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Liedzeilen brauchen deutlich mehr Platz als ein Songtitel.
     private var panelWidth: CGFloat {
         guard let view else { return 372 }
-        // Im Liedtext-Modus fest: mitwandernde Breite waere bei jeder neuen
-        // Textzeile eine andere und das Panel damit staendig in Bewegung.
-        if lyricsMode {
-            let width = UserDefaults.standard.object(forKey: "lyricsWidth") as? Double ?? 520
-            return CGFloat(min(max(width, 240), 900))
-        }
-        let height = lastDockFrame.height > 0 ? lastDockFrame.height : 49
-        return min(max(view.preferredWidth(height: height), 260), 620)
+        // Fest, nicht nach Inhalt: eine mitwandernde Breite waere bei jedem
+        // Titel eine andere, und das Panel spraenge staendig hin und her.
+        // Eingestellt wird sie an der Kante, gezogen wie bei einem Fenster.
+        if let pendingWidth { return pendingWidth }
+        let stored = UserDefaults.standard.object(forKey: widthKey) as? Double
+            ?? (lyricsMode ? 520 : 420)
+        return clampWidth(CGFloat(stored))
+    }
+
+    /// Getrennte Breiten: der Liedtext-Modus braucht mehr Platz als Cover,
+    /// Titel und Knoepfe, und beides einzeln zu merken erspart das Nachziehen
+    /// bei jedem Umschalten.
+    private var widthKey: String { lyricsMode ? "lyricsWidth" : "panelWidth" }
+
+    /// Unter 200 Punkten bleibt vom Panel nichts Sinnvolles uebrig: Cover,
+    /// eine lesbare Titelzeile und ein Knopf brauchen zusammen so viel.
+    static let minWidth: CGFloat = 200
+
+    private func clampWidth(_ width: CGFloat) -> CGFloat {
+        let screen = NSScreen.screens.first(where: { $0.frame.intersects(lastDockFrame) })
+            ?? NSScreen.main
+        let room = max(Self.minWidth, (screen?.frame.width ?? 1440) - lastDockFrame.width - 4 * gap)
+        return min(max(width, Self.minWidth), room)
     }
     private var spectrumEnabled: Bool { UserDefaults.standard.bool(forKey: "showSpectrum") }
     private let gap: CGFloat = 8
@@ -2152,6 +2276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // genau den Wert des Hintergrunds. Mit Schatten sass das Panel sichtbar
         // "auf" dem Bild statt darin (gemessen 31 ueber, 28 unter der Kante).
         panel.hasShadow = false
+        panel.acceptsMouseMovedEvents = true
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)))
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.isMovable = false
@@ -2200,6 +2325,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Spotify.setVolume(next)
         }
         view.menu = buildContextMenu()
+
+        view.onResize = { [weak self] width in
+            guard let self else { return }
+            self.pendingWidth = self.clampWidth(width)
+            self.lastDockFrame = .null      // Position neu bestimmen lassen
+            self.followDock()
+            self.updateText()               // Album/Vorschau haengen an der Breite
+        }
+        view.onResizeEnd = { [weak self] in
+            guard let self, let width = self.pendingWidth else { return }
+            UserDefaults.standard.set(Double(width), forKey: self.widthKey)
+            self.pendingWidth = nil
+            self.view.menu = buildContextMenu()
+        }
 
         view.progressBar.onScrub = { [weak self] fraction in
             guard let self else { return }
@@ -2616,7 +2755,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Zeigt entweder Titel und Interpret oder die mitlaufende Textzeile.
     private func updateText() {
         guard lyricsMode else {
-            view.setTexts(title: track.title, subtitle: track.artist)
+            // Das Album kommt erst bei grosser Breite dazu; darunter waere die
+            // Zeile nur abgeschnitten.
+            let showsAlbum = view.showsExtras && !track.album.isEmpty
+                && track.album != track.title
+            view.setTexts(title: track.title,
+                          subtitle: showsAlbum ? "\(track.artist) · \(track.album)" : track.artist)
             return
         }
         guard !lyricLines.isEmpty else {
@@ -2624,11 +2768,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                           subtitle: lyricsTrackURI.isEmpty ? "" : "kein Liedtext gefunden")
             return
         }
-        let (current, _) = Lyrics.at(displayPosition, in: lyricLines)
+        let (current, next) = Lyrics.at(displayPosition, in: lyricLines)
         // Vor der ersten Zeile und in Instrumentalpausen steht nichts an –
         // dann lieber Titel und Interpret als eine leere Flaeche.
         if current.isEmpty {
             view.setTexts(title: track.title, subtitle: track.artist)
+        } else if view.showsLyricPreview && !next.isEmpty {
+            // Genug Platz: die naechste Zeile darunter, wie frueher – hier
+            // nimmt sie der laufenden nichts weg.
+            view.setTexts(title: current, subtitle: next)
         } else {
             view.setLyricLine(current)
         }
@@ -2699,10 +2847,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Waehrend die Lautstaerke angezeigt wird, darf die Position die Leiste
         // nicht ueberschreiben – sonst springt sie im Takt hin und her.
         guard !scrubbing, !view.progressBar.showsVolume, track.duration > 0 else { return }
-        // Leiste und Zeiten sind nur beim Hovern zu sehen. Ohne Zeiger auf dem
-        // Panel zeichnet dieser Takt gegen eine durchsichtige Anzeige; beim
-        // Hovern setzt onHoverChange den Stand ohnehin sofort neu.
-        guard view.isHovering else { return }
+        // Leiste und Zeiten sind nur beim Hovern zu sehen – ausser bei grosser
+        // Breite, da stehen sie dauerhaft da. Sonst zeichnet dieser Takt gegen
+        // eine durchsichtige Anzeige; beim Hovern setzt onHoverChange den
+        // Stand ohnehin sofort neu.
+        guard view.isHovering || view.showsExtras else { return }
         view.progressBar.progress = displayPosition / track.duration
         view.setTimes(running: Self.clock(displayPosition), total: Self.clock(track.duration))
     }
@@ -2773,6 +2922,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             frame.origin.x = screen.frame.minX + 4
         }
 
+        // Gezogen wird an der Kante, die vom Dock wegzeigt.
+        view.gripOnRight = frame.minX >= dockFrame.minX
         if frame != panel.frame {
             panel.setFrame(frame, display: false)
         }
@@ -2780,6 +2931,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.orderFront(nil)
             writeDiagnostics()
         }
+        // Album und Liedtextvorschau haengen an der Breite; nach jeder
+        // Aenderung der Geometrie neu entscheiden.
+        updateText()
     }
 
     // MARK: Berechtigungen
@@ -2811,6 +2965,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Spotify steuerbar        : \(Spotify.permissionDenied ? "NEIN - nicht erlaubt" : (track.title.isEmpty ? "noch unklar" : "ja"))",
             "Titel gelesen            : \(track.title.isEmpty ? "-- leer --" : track.title)",
             "Dock gefunden            : \(dockFrame.map { "x=\(Int($0.minX)) y=\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "NEIN")",
+            "Panel                    : x=\(Int(panel.frame.minX)) breite=\(Int(panel.frame.width)) Ziehkante=\(view.gripOnRight ? "rechts" : "links")",
             "Panel sichtbar           : \(panel?.isVisible == true)",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",
             "Zugangs-Ablage           : \(SpotifyWeb.storageCheck())",
