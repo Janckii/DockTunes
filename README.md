@@ -74,7 +74,7 @@ weniger als 200 Punkte nimmt das Panel nicht an.
 | 280 | Interpret |
 | 300 | Zurück |
 | 360 | Playlist-Knopf |
-| 280 | Tonanzeige (wenn im Menü eingeschaltet) |
+| 240 | Tonanzeige (wenn im Menü eingeschaltet) |
 | 520 | Album, und Zeitleiste samt Zeiten dauerhaft statt nur beim Zeigen |
 | 700 | im Liedtext-Modus: die nächste Zeile als Vorschau |
 
@@ -82,9 +82,12 @@ Die Reihenfolge folgt dem Nutzen: **weiter** ist wichtiger als zurück, und
 beides wichtiger als das Plus – im schmalsten Panel steht deshalb die
 Weiter-Taste, nicht der Playlist-Knopf.
 
-Die **Tonanzeige** läuft ab 280 Punkten immer; ob sie überhaupt erscheint,
-entscheidet der Schalter im Rechtsklick-Menü. Nur im schmalsten Panel bleibt
-sie weg, dort wäre für den Titel sonst nichts mehr übrig.
+Die **Tonanzeige** läuft auch im schmalen Panel. Ob sie überhaupt erscheint,
+entscheidet der Schalter im Rechtsklick-Menü; sie weicht nur, wenn dem Titel
+sonst weniger als 70 Punkte blieben – der Text wäre dort nur noch ein hastig
+laufender Schnipsel. Die Schwelle hängt an der Panelbreite und daran, welche
+Knöpfe stehen, **nicht** am Titel: sonst ginge die Anzeige bei jedem Lied an
+und aus.
 
 **Passt der Titel nicht, läuft er durch** – endlos, mit 34 Punkten je Sekunde
 und 40 Punkten Abstand zwischen den Durchläufen. Nur der Titel; der Interpret

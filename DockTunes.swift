@@ -2076,12 +2076,15 @@ private final class PlayerView: NSView {
         // 2 Punkte Zugabe: nachgemessen liegt die Tonanzeige sonst zu dicht am Knopf.
         var rightEdge = x + symbolGap - gap - 2
 
-        // Tonanzeige davor. Ob sie laeuft, entscheidet der Schalter im Menue –
-        // nur im schmalsten Panel bleibt sie weg, dort waere fuer den Titel
-        // sonst nichts mehr uebrig. Passt der Titel nicht, laeuft er durch.
+        // Tonanzeige davor. Ob sie ueberhaupt erscheint, entscheidet der
+        // Schalter im Menue; sie weicht nur, wenn dem Titel sonst zu wenig
+        // bliebe. Die Schwelle haengt an der Panelbreite und daran, welche
+        // Knoepfe stehen – nicht am Text. Sonst ginge sie bei jedem Titel an
+        // und aus. Passt der Titel nicht, laeuft er durch.
         let spectrumWidth: CGFloat = 30
         let textLeft = showsLyrics ? pad : cover.frame.maxX + gap
-        let spectrumVisible = showsSpectrum && bounds.width >= 280
+        let roomForTitle = rightEdge - textLeft - (spectrumWidth + gap)
+        let spectrumVisible = showsSpectrum && roomForTitle >= 70
         spectrum.isHidden = !spectrumVisible
         if spectrumVisible {
             let spectrumHeight: CGFloat = 20
