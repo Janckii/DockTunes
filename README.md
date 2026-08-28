@@ -52,7 +52,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
 | Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
 | Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie kurz an |
-| An der äußeren Kante ziehen | Breite ändern, wie bei einem Fenster |
+| An einer Kante ziehen | Breite ändern, wie bei einem Fenster |
 | Rechtsklick | Menü mit allen Einstellungen |
 
 ## Breite
@@ -60,10 +60,11 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 Die Breite ist **fest** und wird nicht vom Titel bestimmt. Eine mitwandernde
 Breite wäre bei jedem Lied eine andere, und das Panel wäre ständig in Bewegung.
 
-Geändert wird sie durch Ziehen an der äußeren Kante – der, die vom Dock
-wegzeigt. Fährt der Zeiger über das Panel, erscheint dort eine kurze senkrechte
-Marke; die sechs Punkte davor sind die Ziehfläche. Unter 200 Punkten geht es
-nicht, darüber bis knapp an den Bildschirmrand.
+Geändert wird sie durch Ziehen an einer Kante, genau wie bei einem Fenster –
+das Ziehen macht der Fenster-Server selbst, nicht die App. Unter 200 Punkten
+geht es nicht, darüber bis knapp an den Bildschirmrand. Die Höhe bleibt die des
+Docks. Der Fokus bleibt dabei, wo er war (nachgemessen: die vorderste App
+wechselt nicht).
 
 **Je breiter, desto mehr steht drin:**
 
@@ -305,21 +306,37 @@ Play und Pause sind unterschiedlich geformt und brauchen je einen eigenen
 Feinversatz – mit einem gemeinsamen Wert lag der Abstand beim Pause-Zeichen um
 einen Punkt daneben.
 
-## Kein Größenzeiger
+## Kein Größenzeiger an der Kante
 
-An der Ziehkante wechselt der Mauszeiger **nicht** auf das Größensymbol, und
-das ist keine Nachlässigkeit: den Zeiger bestimmt die aktive Anwendung.
-DockTunes aktiviert sich nie – Klicks aufs Panel sollen den Fokus nicht
-stehlen, das ist eine der Grundbedingungen.
+Das Ziehen funktioniert, der Mauszeiger wechselt dabei aber **nicht** auf das
+Größensymbol. Das ist kein Versehen, sondern durchgemessen – sieben Anläufe:
 
-Nachgeprüft, nicht vermutet: `NSCursor.set()` bleibt wirkungslos, auch für die
-ganze Panelfläche und auch zehnmal je Sekunde wiederholt. `cursorUpdate` und
-`mouseMoved` erreichen ein Fenster ohne Fokus gar nicht erst (`mouseEntered`
-schon – daran hängt jetzt die Marke). Der einzige Weg wäre, das Panel zum
-Schlüsselfenster zu machen, und damit wäre der Fokus weg.
+| Versuch | Ergebnis |
+|---|---|
+| `NSCursor.set()` beim Eintreten | wirkungslos |
+| `NSCursor.push()` | wirkungslos |
+| zehnmal je Sekunde nachgesetzt | wirkungslos |
+| dasselbe für die ganze Panelfläche | wirkungslos |
+| `.cursorUpdate`-Zone | Ereignis kommt nicht an |
+| `.mouseMoved`-Zone | Ereignis kommt nicht an |
+| Fenster auf `.floating` statt Dock-Ebene | wirkungslos |
+| App aktiviert (`.regular` + `activate`) | wirkungslos |
 
-Deshalb markiert das Panel die Kante selbst: eine kurze senkrechte Linie, die
-beim Zeigen erscheint – so wie der Dock seine Trennlinie zeigt.
+Den Mauszeiger vergibt die aktive Anwendung. DockTunes aktiviert sich nie –
+Klicks aufs Panel sollen den Fokus nicht stehlen, das ist eine der
+Grundbedingungen. `mouseEntered` erreicht ein Fenster ohne Fokus noch,
+`mouseMoved` und `cursorUpdate` nicht mehr.
+
+Das **Ziehen** dagegen geht, seit das Panel einen echten (unsichtbar gemachten)
+Fensterrahmen hat: `.titled` statt `.borderless`, dazu `.resizable`. Zwei
+Dinge waren dafür nötig:
+
+- `canBecomeKey` muss `true` sein, sonst übernimmt der Fenster-Server die
+  Kanten nicht. Zusammen mit `.nonactivatingPanel` wird die App davon **nicht**
+  aktiv – nachgemessen: die vorderste Anwendung bleibt dieselbe.
+- `constrainFrameRect` muss überschrieben werden. macOS schiebt Fenster mit
+  Titelrahmen selbsttätig aus dem Dock-Bereich heraus, gemessen um 50 Punkte
+  nach oben. Genau dort soll das Panel aber sitzen.
 
 ## Signatur
 

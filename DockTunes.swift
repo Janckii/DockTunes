@@ -1397,7 +1397,6 @@ private final class PlayerView: NSView {
     private var tracking: NSTrackingArea?
     private var hoverProgress: CGFloat = 0
     private var hoverTimer: Timer?
-    private let gripMark = NSView()
 
     var onClick: (() -> Void)?
     var onHoverChange: ((Bool) -> Void)?
@@ -1435,11 +1434,6 @@ private final class PlayerView: NSView {
         content.addSubview(shade, positioned: .below, relativeTo: nil)
         // Additive Schicht: hebt die Flaeche an, ohne die Steigung zu aendern.
         // Nur so lassen sich Helligkeit und Durchlaessigkeit getrennt stellen.
-        gripMark.wantsLayer = true
-        gripMark.alphaValue = 0
-        gripMark.layer?.cornerRadius = 1
-        content.addSubview(gripMark)
-
         boost.wantsLayer = true
         content.addSubview(boost, positioned: .below, relativeTo: shade)
 
@@ -1554,45 +1548,8 @@ private final class PlayerView: NSView {
             .withSymbolConfiguration(configuration)
     }
 
-    // MARK: Breite ziehen
-
-    /// Die Ziehzone liegt auf der Kante, die vom Dock wegzeigt. Sechs Punkte
-    /// breit; der Rahmen des Plus-Knopfs endet sieben Punkte vor der Kante,
-    /// die beiden ueberschneiden sich also nicht.
-    var gripOnRight = true
-    var onResize: ((CGFloat) -> Void)?
-    var onResizeEnd: (() -> Void)?
-    private var resizing = false
-    private var resizeStartWidth: CGFloat = 0
-    private var resizeStartX: CGFloat = 0
-
-    var gripRect: NSRect {
-        let w: CGFloat = 6
-        return gripOnRight ? NSRect(x: bounds.width - w, y: 0, width: w, height: bounds.height)
-                           : NSRect(x: 0, y: 0, width: w, height: bounds.height)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        if gripRect.contains(convert(event.locationInWindow, from: nil)) {
-            resizing = true
-            resizeStartWidth = bounds.width
-            resizeStartX = NSEvent.mouseLocation.x
-            return
-        }
-        onClick?()
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard resizing else { return }
-        let dx = NSEvent.mouseLocation.x - resizeStartX
-        onResize?(resizeStartWidth + (gripOnRight ? dx : -dx))
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard resizing else { return }
-        resizing = false
-        onResizeEnd?()
-    }
+    /// Die Kanten zieht der Fenster-Server selbst; siehe PlayerPanel.
+    override func mouseDown(with event: NSEvent) { onClick?() }
 
     var onScroll: ((Int) -> Void)?
     private var scrollAccumulator: CGFloat = 0
@@ -1914,19 +1871,6 @@ private final class PlayerView: NSView {
     override func mouseEntered(with event: NSEvent) { setHovering(true) }
     override func mouseExited(with event: NSEvent) { setHovering(false) }
 
-    /// Ein Groessenzeiger ist hier nicht zu haben: den Mauszeiger bestimmt die
-    /// aktive Anwendung, und DockTunes aktiviert sich nie – Klicks aufs Panel
-    /// sollen ja den Fokus nicht stehlen. Nachgeprueft: NSCursor.set() bleibt
-    /// wirkungslos, auch fuer das ganze Panel und auch wiederholt gesetzt.
-    /// Also markiert das Panel die Kante selbst, so wie der Dock seine
-    /// Trennlinie zeigt.
-    private func showGripMark(_ on: Bool) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
-            gripMark.animator().alphaValue = on ? 1 : 0
-        }
-    }
-
     /// Blendet die Leiste unabhaengig vom Zeigen ein – fuer die Lautstaerke.
     func forceProgressVisible(_ visible: Bool) {
         progressBar.isHidden = false
@@ -1942,7 +1886,6 @@ private final class PlayerView: NSView {
     private func setHovering(_ value: Bool) {
         guard value != isHovering else { return }
         isHovering = value
-        showGripMark(value)
         startHoverAnimation()
         onHoverChange?(value)
     }
@@ -2010,15 +1953,6 @@ private final class PlayerView: NSView {
         shade.frame = bounds
         shade.layer?.cornerRadius = radius
         shade.layer?.masksToBounds = true
-        // Griffmarke auf der Ziehkante: zwei Punkte breit, drei vom Rand.
-        // Der Rahmen des Plus-Knopfs endet sieben Punkte vor der Kante, sie
-        // stoesst also an nichts an.
-        let markHeight: CGFloat = 14
-        gripMark.frame = CGRect(x: gripOnRight ? bounds.width - 5 : 3,
-                                y: round((bounds.height - markHeight) / 2),
-                                width: 2, height: markHeight)
-        gripMark.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.45).cgColor
-
         // Die Deckkraft haengt sonst nur am Hover-Takt, der bei grosser Breite
         // nie laeuft – dann blieben Leiste und Zeiten unsichtbar.
         let shown = effectiveHover
@@ -2162,14 +2096,24 @@ private final class PassthroughView: NSView {
 }
 
 private final class PlayerPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    /// Muss true sein, damit der Fenster-Server die Kanten uebernimmt. Mit
+    /// .nonactivatingPanel wird davon die Anwendung nicht aktiv.
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// macOS haelt Fenster mit Titelrahmen selbsttaetig aus dem Dock-Bereich
+    /// heraus – gemessen 50 Punkte nach oben geschoben. Genau dort soll das
+    /// Panel aber sitzen. Der Rahmen ist nur da, damit der Fenster-Server die
+    /// Kanten uebernimmt; seine Platzierung bestimmt weiter der Dock.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
 }
 
 // MARK: - App
 
 @main
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private static var retained: AppDelegate?
 
@@ -2190,6 +2134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pollInterval: TimeInterval = 0
     /// Breite waehrend des Ziehens; erst beim Loslassen gesichert.
     private var pendingWidth: CGFloat?
+    private var liveResizing = false
     private var motionTimer: Timer?
     private var spectrumTimer: Timer?
     private let analyzer = AudioSpectrum()
@@ -2268,7 +2213,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildPanel() {
         panel = PlayerPanel(contentRect: CGRect(x: 0, y: 0, width: panelWidth, height: 50),
-                            styleMask: [.borderless, .nonactivatingPanel],
+                            // Ein echter Fensterrahmen, nur unsichtbar gemacht:
+                            // damit uebernimmt der Fenster-Server die Kanten,
+                            // zeigt dort den Groessenzeiger und zieht selbst.
+                            // Rahmenlos ginge das nicht – ohne Rahmen gibt es
+                            // keine Kante, an der er greifen koennte, und den
+                            // Zeiger setzen kann nur die aktive Anwendung.
+                            styleMask: [.titled, .fullSizeContentView,
+                                        .nonactivatingPanel, .resizable],
                             backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -2276,7 +2228,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // genau den Wert des Hintergrunds. Mit Schatten sass das Panel sichtbar
         // "auf" dem Bild statt darin (gemessen 31 ueber, 28 unter der Kante).
         panel.hasShadow = false
-        panel.acceptsMouseMovedEvents = true
+        panel.delegate = self
+        // Vom Rahmen bleibt nichts zu sehen: kein Titel, keine Knoepfe, keine
+        // Leiste – nur seine Kanten, an denen sich ziehen laesst.
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.styleMask.remove(.closable)
+        for button: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            panel.standardWindowButton(button)?.isHidden = true
+        }
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)))
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.isMovable = false
@@ -2325,20 +2285,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Spotify.setVolume(next)
         }
         view.menu = buildContextMenu()
-
-        view.onResize = { [weak self] width in
-            guard let self else { return }
-            self.pendingWidth = self.clampWidth(width)
-            self.lastDockFrame = .null      // Position neu bestimmen lassen
-            self.followDock()
-            self.updateText()               // Album/Vorschau haengen an der Breite
-        }
-        view.onResizeEnd = { [weak self] in
-            guard let self, let width = self.pendingWidth else { return }
-            UserDefaults.standard.set(Double(width), forKey: self.widthKey)
-            self.pendingWidth = nil
-            self.view.menu = buildContextMenu()
-        }
 
         view.progressBar.onScrub = { [weak self] fraction in
             guard let self else { return }
@@ -2873,7 +2819,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Dem Dock folgen
 
+    // MARK: Breite ziehen
+
+    /// Die Hoehe gehoert dem Dock, frei ist nur die Breite.
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        NSSize(width: clampWidth(frameSize.width), height: sender.frame.height)
+    }
+
+    func windowWillStartLiveResize(_ notification: Notification) {
+        liveResizing = true
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        // Waehrend des Ziehens ist der Fensterrahmen die Wahrheit; die
+        // Nachfuehrung darf ihn nicht ueberschreiben.
+        pendingWidth = panel.frame.width
+        updateText()            // Album und Vorschau haengen an der Breite
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        liveResizing = false
+        if let width = pendingWidth {
+            UserDefaults.standard.set(Double(width), forKey: widthKey)
+        }
+        pendingWidth = nil
+        lastDockFrame = .null    // wieder an den Dock heranziehen
+        followDock()
+        view.menu = buildContextMenu()
+        writeDiagnostics()
+    }
+
     private func followDock() {
+        guard !liveResizing else { return }
         // Der Dock aendert seine Groesse nur aus zwei Gruenden: der Zeiger ist
         // bei ihm (Vergroesserung) oder er faehrt ein und aus. Beides passiert
         // nur in seiner Naehe. Sonst genuegen fuenf Blicke je Sekunde. Die
@@ -2922,8 +2899,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             frame.origin.x = screen.frame.minX + 4
         }
 
-        // Gezogen wird an der Kante, die vom Dock wegzeigt.
-        view.gripOnRight = frame.minX >= dockFrame.minX
         if frame != panel.frame {
             panel.setFrame(frame, display: false)
         }
@@ -2965,7 +2940,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Spotify steuerbar        : \(Spotify.permissionDenied ? "NEIN - nicht erlaubt" : (track.title.isEmpty ? "noch unklar" : "ja"))",
             "Titel gelesen            : \(track.title.isEmpty ? "-- leer --" : track.title)",
             "Dock gefunden            : \(dockFrame.map { "x=\(Int($0.minX)) y=\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "NEIN")",
-            "Panel                    : x=\(Int(panel.frame.minX)) breite=\(Int(panel.frame.width)) Ziehkante=\(view.gripOnRight ? "rechts" : "links")",
+            "Panel                    : x=\(Int(panel.frame.minX)) y=\(Int(panel.frame.minY)) \(Int(panel.frame.width))x\(Int(panel.frame.height)) Schluessel=\(panel.isKeyWindow)",
             "Panel sichtbar           : \(panel?.isVisible == true)",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",
             "Zugangs-Ablage           : \(SpotifyWeb.storageCheck())",
