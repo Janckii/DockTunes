@@ -29,7 +29,17 @@
 - **Add to a playlist** from a picker of your own playlists.
 - Scroll over the panel for volume, in steps of 5.
 - German or English, following the system language.
-- ~1 % of one core at rest, 2 % while playing.
+- **Light on the machine.** Measured with `top`, averaged over five samples:
+
+  | State | CPU | Memory |
+  |---|---|---|
+  | paused | 0.9 % | 13 MB |
+  | playing | 2.2 % | 15 MB |
+  | playing, pointer on the panel | 2.8 % | 15 MB |
+  | lyrics mode, playing | 2.5 % | 14 MB |
+
+  Memory is flat over time and the only leaks are 9.6 KB inside Apple's XPC
+  layer.
 
 ## Screenshots
 

@@ -293,13 +293,16 @@ dem gerade gearbeitet wird, behält den Fokus.
 Gemessen mit `top -l 5` auf einem Kern. (`ps -o %cpu` taugt hier nicht – das
 ist der Durchschnitt über die ganze Laufzeit, nicht der aktuelle Wert.)
 
-| Zustand | ganz früher | zwischendurch | jetzt |
-|---|---|---|---|
-| pausiert, Zeiger woanders | 4,0 % | 1,2 % | **1,0 %** |
-| spielt, Zeiger woanders | 7,6 % | 2,8 % | **2,0 %** |
-| spielt, Zeiger auf dem Panel | 9,3 % | 4,6 % | **3,6 %** |
-| Liedtext-Modus, spielt | – | 2,8 % | **2,5 %** |
-| Titel läuft durch | – | +1,5 % | **kaum messbar** |
+| Zustand | ganz früher | jetzt |
+|---|---|---|
+| pausiert, Zeiger woanders | 4,0 % | **0,9 %** |
+| spielt, Zeiger woanders | 7,6 % | **2,2 %** |
+| spielt, Zeiger auf dem Panel | 9,3 % | **2,8 %** |
+| Liedtext-Modus, spielt | – | **2,5 %** |
+| Titel läuft durch | – | kaum messbar |
+
+Speicher 13–15 MB, über 90 Sekunden unverändert; die einzigen Lecks sind
+9,6 KB in Apples XPC-Schicht.
 
 Woher die Ersparnis kommt:
 
@@ -326,6 +329,12 @@ Woher die Ersparnis kommt:
   da bewegt sich nichts, und einen echten Wechsel meldet Spotify von selbst.
 - **Feste Puffer in der Tonanalyse** statt vier neuer Anlagen je Durchlauf, und
   der Ringspeicher wird blockweise kopiert statt Wert für Wert mit Modulo.
+- **Die Symbolliste des Docks wird gemerkt.** Sie bei jedem Durchlauf unter
+  den Kindern zu suchen heißt: ein Feld anlegen und für jedes Kind die Rolle
+  erfragen, jede Abfrage ein eigener Aufruf an den Dock-Prozess. Eine
+  Stichprobe im Leerlauf zeigte rund 2 ms je Durchlauf und damit den größten
+  Posten überhaupt – bei nur fünf Abfragen je Sekunde. Mit gemerkter Liste
+  bleiben zwei Abfragen, und der Leerlauf fiel von 2,2 % auf 0,9 %.
 - **Der Dock-Prozess wird nicht mehr gesucht.** Ihn alle zwei Sekunden in der
   Prozessliste zu finden war im Leerlauf der größte verbliebene Posten – eine
   Stichprobe zeigte den Löwenanteil der Ruhelast genau dort. Er wechselt aber

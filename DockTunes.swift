@@ -1073,10 +1073,21 @@ private enum Dock {
 
     private static func forget() {
         cachedElement = nil
+        cachedList = nil
     }
 
     /// Rechteck des sichtbaren Dock-Glases in Fensterkoordinaten.
-    static func frame() -> CGRect? {
+    /// Rechteck des sichtbaren Dock-Glases in Fensterkoordinaten.
+    ///
+    /// Die Symbolliste wird gemerkt. Sie jedes Mal unter den Kindern zu suchen
+    /// heisst: ein Feld anlegen und fuer jedes Kind die Rolle erfragen – jede
+    /// Abfrage geht als eigener Aufruf an den Dock-Prozess. Gemessen kostete
+    /// ein Durchlauf damit rund 2 ms und war im Leerlauf der groesste Posten.
+    /// Mit gemerkter Liste bleiben zwei Abfragen.
+    private static var cachedList: AXUIElement?
+
+    private static func listElement() -> AXUIElement? {
+        if let cachedList { return cachedList }
         guard let dock = element() else { return nil }
         var childrenValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(dock, kAXChildrenAttribute as CFString, &childrenValue) == .success,
@@ -1084,31 +1095,44 @@ private enum Dock {
             forget()          // Dock neu gestartet: beim naechsten Mal neu suchen
             return nil
         }
-
         for child in children {
             var roleValue: CFTypeRef?
             AXUIElementCopyAttributeValue(child, kAXRoleAttribute as CFString, &roleValue)
             guard (roleValue as? String) == kAXListRole as String else { continue }
-
-            var positionValue: CFTypeRef?, sizeValue: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(child, kAXPositionAttribute as CFString, &positionValue) == .success,
-                  AXUIElementCopyAttributeValue(child, kAXSizeAttribute as CFString, &sizeValue) == .success
+            var sizeValue: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(child, kAXSizeAttribute as CFString, &sizeValue) == .success
             else { continue }
-
-            var origin = CGPoint.zero, size = CGSize.zero
-            AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin)
+            var size = CGSize.zero
             AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
             guard size.width > 1, size.height > 1 else { continue }
-
-            let list = CGRect(origin: origin, size: size)
-            let referenceMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-            // AX zählt y von oben, Fenster von unten – und das Glas liegt tiefer.
-            return CGRect(x: list.minX,
-                          y: referenceMaxY - list.maxY - glassOffsetY,
-                          width: list.width,
-                          height: list.height)
+            cachedList = child
+            return child
         }
         return nil
+    }
+
+    static func frame() -> CGRect? {
+        guard let list = listElement() else { return nil }
+        var positionValue: CFTypeRef?, sizeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(list, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(list, kAXSizeAttribute as CFString, &sizeValue) == .success
+        else {
+            // Die gemerkte Liste taugt nicht mehr – beim naechsten Mal neu suchen.
+            cachedList = nil
+            forget()
+            return nil
+        }
+        var origin = CGPoint.zero, size = CGSize.zero
+        AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin)
+        AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        guard size.width > 1, size.height > 1 else { cachedList = nil; return nil }
+        let rect = CGRect(origin: origin, size: size)
+        let referenceMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+        // AX zählt y von oben, Fenster von unten – und das Glas liegt tiefer.
+        return CGRect(x: rect.minX,
+                      y: referenceMaxY - rect.maxY - glassOffsetY,
+                      width: rect.width,
+                      height: rect.height)
     }
 }
 
@@ -2381,7 +2405,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Wohin das Panel unterwegs ist – die Bewegung dorthin läuft weich.
     private var lastDockFrame: CGRect = .null
-    private var idleTicks = 0
+    private var tick = 0
+    private var pointerNearDock = false
+    private var pointerOnPanel = false
     private var scrubbing = false
     private var positionAnchor: (value: TimeInterval, at: Date)?
 
@@ -3150,24 +3176,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // nur in seiner Naehe. Sonst genuegen fuenf Blicke je Sekunde. Die
         // Zeigerabfrage ist kostenlos, die Abfrage der Bedienungshilfen nicht:
         // sie macht bei 60 Hz zwei Prozent Rechenzeit aus, gemessen.
+        tick &+= 1
         if !lastDockFrame.isNull {
-            let pointer = NSEvent.mouseLocation
-            let every: Int
-            if panel.frame.contains(pointer) {
-                // Auf dem Panel vergroessert sich der Dock nicht. Nur haeufig
-                // genug hinsehen, um den Uebergang zum Dock nicht zu verpassen.
-                every = 3
-            } else if lastDockFrame.insetBy(dx: -180, dy: -180).contains(pointer) {
-                every = 1
-            } else {
-                every = 12
+            // Auch die Zeigerabfrage ist nicht umsonst: sie geht an den
+            // Fensterserver und kostet bei 60 Hz 1,6 % Rechenzeit, gemessen.
+            // Im Ruhezustand genuegt sie zehnmal je Sekunde; steht der Zeiger
+            // beim Dock, wird wieder jeder Takt genutzt.
+            if pointerNearDock || tick % 6 == 0 {
+                let pointer = NSEvent.mouseLocation
+                pointerNearDock = lastDockFrame.insetBy(dx: -180, dy: -180).contains(pointer)
+                pointerOnPanel = panel.frame.contains(pointer)
             }
-            if every > 1 {
-                idleTicks += 1
-                guard idleTicks >= every else { return }
-            }
+            // Auf dem Panel vergroessert sich der Dock nicht. Nur haeufig genug
+            // hinsehen, um den Uebergang zum Dock nicht zu verpassen.
+            let every = pointerNearDock ? 1 : (pointerOnPanel ? 3 : 12)
+            guard tick % every == 0 else { return }
         }
-        idleTicks = 0
 
         guard track.hasTrack, let dockFrame = Dock.frame() else {
             // Kein Dock zu finden: Vollbild, automatisches Ausblenden oder kein
@@ -3256,6 +3280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Panel sichtbar           : \(panel?.isVisible == true)",
             "Auswahlfenster           : \(picker?.isVisible == true ? "offen mit \(pickerCount) Playlists" : "zu")",
             "Nachfuehren, zuletzt     : \(followLog.isEmpty ? "nichts" : followLog.joined(separator: " | "))",
+            "Takt                     : leer=\(lastDockFrame.isNull) beimDock=\(pointerNearDock) aufPanel=\(pointerOnPanel) jeder=\(pointerNearDock ? 1 : (pointerOnPanel ? 3 : 12))",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",
             "Zugangs-Ablage           : \(SpotifyWeb.storageCheck())",
             "Symbolbreiten            : \(PlayerView.inkReport())",
