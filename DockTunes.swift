@@ -1541,7 +1541,12 @@ private final class PlayerView: NSView {
         // kleine Schritte und werden deshalb gesammelt.
         if event.hasPreciseScrollingDeltas {
             scrollAccumulator += event.scrollingDeltaY
-            let step: CGFloat = 3
+            // An die Schrittweite gekoppelt: die Lautstaerke soll je gewischtem
+            // Zentimeter gleich weit wandern, egal ob in Zweier- oder
+            // Fuenferschritten. Sonst waere der Regler bei groesseren Schritten
+            // nach einem Wisch am Anschlag.
+            let unit = UserDefaults.standard.object(forKey: "volumeStep") as? Int ?? 5
+            let step = CGFloat(unit) * 1.5
             while abs(scrollAccumulator) >= step {
                 onScroll?(scrollAccumulator > 0 ? 1 : -1)
                 scrollAccumulator -= scrollAccumulator > 0 ? step : -step
@@ -1593,6 +1598,27 @@ private final class PlayerView: NSView {
         }
     }
 
+    /// Die neue Zeile steigt von unten ein und blendet auf – als Ebenen-
+    /// animation, die der Compositor faehrt. Ein Neuzeichnen je Bild wuerde
+    /// in der Glasflaeche ein Vielfaches kosten.
+    private func animateLine(_ label: NSTextField, rise: CGFloat, delay: CFTimeInterval) {
+        label.wantsLayer = true
+        guard let layer = label.layer else { return }
+        let move = CABasicAnimation(keyPath: "transform.translation.y")
+        move.fromValue = -rise
+        move.toValue = 0
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0.0
+        fade.toValue = 1.0
+        let group = CAAnimationGroup()
+        group.animations = [move, fade]
+        group.duration = 0.26
+        group.beginTime = CACurrentMediaTime() + delay
+        group.fillMode = .backwards
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(group, forKey: "zeilenwechsel")
+    }
+
     private var lastTitle: String?
     private var lastSubtitle: String?
 
@@ -1601,9 +1627,19 @@ private final class PlayerView: NSView {
         // aber nur alle paar Sekunden. Zwei Attributtexte samt Schatten neu zu
         // bauen und ins Glas zu zeichnen kostet dort mehr als der ganze Rest.
         guard title != lastTitle || subtitle != lastSubtitle else { return }
+        // Im Liedtext-Modus wechselt die Zeile mitten im Lauf. Ohne Bewegung
+        // ist der Wechsel kaum zu bemerken – der Text steht einfach ploetzlich
+        // anders da. Nur bei neuer Zeile, nicht bei der Lautstaerkeanzeige.
+        let newLine = showsLyrics && lastTitle != nil && title != lastTitle
         lastTitle = title
         lastSubtitle = subtitle
-        defer { onTextChange?() }
+        defer {
+            onTextChange?()
+            if newLine {
+                animateLine(titleLabel, rise: 5, delay: 0)
+                animateLine(artistLabel, rise: 3, delay: 0.04)
+            }
+        }
         titleLabel.attributedStringValue = NSAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
             .foregroundColor: primaryColor,
@@ -2075,7 +2111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.onScroll = { [weak self] direction in
             guard let self else { return }
             // Schrittweite je Raste; per "volumeStep" anpassbar.
-            let step = UserDefaults.standard.object(forKey: "volumeStep") as? Int ?? 2
+            let step = UserDefaults.standard.object(forKey: "volumeStep") as? Int ?? 5
             if UserDefaults.standard.bool(forKey: "systemVolume") {
                 Spotify.changeSystemVolume(by: direction * step)
                 self.showVolume(nil)
@@ -2084,8 +2120,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Wert lokal fortschreiben und sofort anzeigen. Auf Spotifys Antwort
             // zu warten laesst die Leiste zappeln, weil die Rueckmeldungen
             // verzoegert und in beliebiger Reihenfolge eintreffen.
+            // Auf das Raster einrasten: so stehen dort immer glatte Werte,
+            // auch wenn Spotify bei 73 stand.
             let base = self.knownVolume ?? 50
-            let next = max(0, min(100, base + direction * step))
+            let raw = direction > 0
+                ? Int((Double(base + 1) / Double(step)).rounded(.up)) * step
+                : Int((Double(base - 1) / Double(step)).rounded(.down)) * step
+            let next = max(0, min(100, raw))
             self.knownVolume = next
             self.showVolume(next)
             Spotify.setVolume(next)
@@ -2116,7 +2157,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if hovering {
                 self.refreshTrack()
                 Spotify.readVolume { level in
-                    if let level { self.knownVolume = level }
+                    guard let level else { return }
+                    // Spotify rastet die Lautstaerke intern auf 1/64 – wer 70
+                    // setzt, liest 69 zurueck. Diesen Rueckfall zu uebernehmen
+                    // wuerde das Fuenferraster nach jedem Hovern zerstoeren.
+                    // Nur uebernehmen, wenn jemand anders sie verstellt hat.
+                    if let known = self.knownVolume, abs(level - known) <= 2 { return }
+                    self.knownVolume = level
                 }
             }
         }

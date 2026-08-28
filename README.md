@@ -51,7 +51,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
 | Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
-| Scrollen über dem Panel | Lautstärke; die Zeitleiste zeigt sie kurz an |
+| Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie kurz an |
 | Rechtsklick | Menü mit allen Einstellungen |
 
 ## Liedtext
@@ -59,9 +59,15 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 Im Rechtsklick-Menü einschaltbar. Statt Cover und Titel zeigt das Panel dann
 die laufende Textzeile und darunter die nächste.
 
+Beim Zeilenwechsel steigt die neue Zeile ein und blendet auf (260 ms) – sonst
+steht der Text plötzlich anders da und der Wechsel geht unter.
+
 Die Texte kommen von [lrclib.net](https://lrclib.net), einem offenen
 Verzeichnis ohne Anmeldung. Dorthin gehen Titel und Interpret des laufenden
 Songs – sonst nichts.
+
+Die Zeitmarken sind **zeilenweise**, nicht wortweise – ein Karaoke-Modus mit
+mitwanderndem Wort ließe sich daraus nur schätzen. Siehe „Was nicht geht".
 
 Eine Fassung wird nur übernommen, wenn Laufzeit (auf 4 Sekunden genau) **und**
 Interpret passen. Beides als Bedingung, nicht nur als Reihung – sonst landet
@@ -91,7 +97,7 @@ mit Rechten 0600.
 Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
 
 ```bash
-defaults write de.jancko.docktunes volumeStep -int 5      # Lautstärke je Raste
+defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
 defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
 defaults write de.jancko.docktunes rimAlpha -float 0.16   # Stärke der Lichtkante
 ```
@@ -277,6 +283,22 @@ Ein Zertifikat liegt aus naheliegenden Gründen nicht im Repository.
 Die App schreibt ihren Zustand nach `/tmp/docktunes-status.txt` – dort steht
 sofort, ob eine Freigabe fehlt, Spotify stumm bleibt oder das Dock nicht
 gefunden wird.
+
+## Was nicht geht
+
+**Karaoke mit mitwanderndem Wort.** Dafür bräuchte es Zeitmarken je Wort.
+lrclib liefert nur je Zeile – über mehrere Titel geprüft, keine einzige
+Wortmarke. Wortgenaue Daten haben Musixmatch, Apple Music und Spotify selbst,
+alle drei nur über bezahlte oder nicht öffentliche Schnittstellen.
+
+Schätzen ließe es sich (Zeilendauer auf die Wörter verteilen, nach Länge
+gewichtet), aber gesungen wird nicht gleichmäßig: bei gehaltenen Tönen und
+Pausen mitten in der Zeile läuft die Markierung sichtbar falsch. Das sähe nach
+Karaoke aus, ohne es zu sein.
+
+Was ehrlich ginge: ein Balken, der in der Zeilendauer einmal von links nach
+rechts durch die Zeile läuft. Der stimmt an beiden Enden genau und behauptet
+dazwischen nichts über einzelne Wörter.
 
 ## Mitmachen
 
