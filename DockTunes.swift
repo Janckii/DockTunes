@@ -2096,24 +2096,14 @@ private final class PassthroughView: NSView {
 }
 
 private final class PlayerPanel: NSPanel {
-    /// Muss true sein, damit der Fenster-Server die Kanten uebernimmt. Mit
-    /// .nonactivatingPanel wird davon die Anwendung nicht aktiv.
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-
-    /// macOS haelt Fenster mit Titelrahmen selbsttaetig aus dem Dock-Bereich
-    /// heraus – gemessen 50 Punkte nach oben geschoben. Genau dort soll das
-    /// Panel aber sitzen. Der Rahmen ist nur da, damit der Fenster-Server die
-    /// Kanten uebernimmt; seine Platzierung bestimmt weiter der Dock.
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-        frameRect
-    }
 }
 
 // MARK: - App
 
 @main
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private static var retained: AppDelegate?
 
@@ -2132,9 +2122,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var progressTimer: Timer?
     private var pollTimer: Timer?
     private var pollInterval: TimeInterval = 0
-    /// Breite waehrend des Ziehens; erst beim Loslassen gesichert.
-    private var pendingWidth: CGFloat?
-    private var liveResizing = false
     private var motionTimer: Timer?
     private var spectrumTimer: Timer?
     private let analyzer = AudioSpectrum()
@@ -2153,8 +2140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let view else { return 372 }
         // Fest, nicht nach Inhalt: eine mitwandernde Breite waere bei jedem
         // Titel eine andere, und das Panel spraenge staendig hin und her.
-        // Eingestellt wird sie an der Kante, gezogen wie bei einem Fenster.
-        if let pendingWidth { return pendingWidth }
+        // Eingestellt wird sie im Rechtsklick-Menue.
         let stored = UserDefaults.standard.object(forKey: widthKey) as? Double
             ?? (lyricsMode ? 520 : 420)
         return clampWidth(CGFloat(stored))
@@ -2213,14 +2199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func buildPanel() {
         panel = PlayerPanel(contentRect: CGRect(x: 0, y: 0, width: panelWidth, height: 50),
-                            // Ein echter Fensterrahmen, nur unsichtbar gemacht:
-                            // damit uebernimmt der Fenster-Server die Kanten,
-                            // zeigt dort den Groessenzeiger und zieht selbst.
-                            // Rahmenlos ginge das nicht – ohne Rahmen gibt es
-                            // keine Kante, an der er greifen koennte, und den
-                            // Zeiger setzen kann nur die aktive Anwendung.
-                            styleMask: [.titled, .fullSizeContentView,
-                                        .nonactivatingPanel, .resizable],
+                            styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -2228,15 +2207,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // genau den Wert des Hintergrunds. Mit Schatten sass das Panel sichtbar
         // "auf" dem Bild statt darin (gemessen 31 ueber, 28 unter der Kante).
         panel.hasShadow = false
-        panel.delegate = self
-        // Vom Rahmen bleibt nichts zu sehen: kein Titel, keine Knoepfe, keine
-        // Leiste – nur seine Kanten, an denen sich ziehen laesst.
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
-        panel.styleMask.remove(.closable)
-        for button: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-            panel.standardWindowButton(button)?.isHidden = true
-        }
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)))
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.isMovable = false
@@ -2368,23 +2338,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         lyricsItem.target = self
         lyricsItem.state = lyricsMode ? .on : .off
         menu.addItem(lyricsItem)
-        if lyricsMode {
-            // Nur im Liedtext-Modus sichtbar: sonst richtet sich die Breite
-            // nach dem Inhalt und waere gar nicht einstellbar.
-            let current = UserDefaults.standard.object(forKey: "lyricsWidth") as? Double ?? 520
-            let widthMenu = NSMenu()
-            for (title, value) in [("Schmal", 420.0), ("Normal", 520.0),
-                                   ("Breit", 640.0), ("Sehr breit", 760.0)] {
-                let item = NSMenuItem(title: title, action: #selector(setLyricsWidth(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = value
-                item.state = abs(current - value) < 1 ? .on : .off
-                widthMenu.addItem(item)
-            }
-            let widthItem = NSMenuItem(title: "Breite des Liedtexts", action: nil, keyEquivalent: "")
-            widthItem.submenu = widthMenu
-            menu.addItem(widthItem)
+        // Die Stufen sind an den Inhalt gekoppelt, nicht rund gewaehlt: jede
+        // bringt etwas Sichtbares mehr (siehe README, Abschnitt Breite).
+        let steps: [(String, Double)] = lyricsMode
+            ? [("Schmal", 420), ("Normal", 520), ("Breit", 640), ("Sehr breit", 760)]
+            : [("Schmal", 260), ("Normal", 420), ("Breit", 560), ("Sehr breit", 700)]
+        let current = UserDefaults.standard.object(forKey: widthKey) as? Double
+            ?? (lyricsMode ? 520 : 420)
+        let widthMenu = NSMenu()
+        for (title, value) in steps {
+            let item = NSMenuItem(title: title, action: #selector(setLyricsWidth(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = value
+            item.state = abs(current - value) < 1 ? .on : .off
+            widthMenu.addItem(item)
         }
+        let widthItem = NSMenuItem(title: "Breite", action: nil, keyEquivalent: "")
+        widthItem.submenu = widthMenu
+        menu.addItem(widthItem)
         let spectrumItem = NSMenuItem(title: "Tonanalyse anzeigen", action: #selector(toggleSpectrum), keyEquivalent: "")
         spectrumItem.target = self
         spectrumItem.state = spectrumEnabled ? .on : .off
@@ -2737,9 +2708,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func setLyricsWidth(_ sender: NSMenuItem) {
         guard let width = sender.representedObject as? Double else { return }
-        UserDefaults.standard.set(width, forKey: "lyricsWidth")
+        UserDefaults.standard.set(width, forKey: widthKey)
         lastDockFrame = .null          // Breite geaendert, Position neu setzen
         followDock()
+        updateText()                   // Album und Vorschau haengen an der Breite
         view.menu = buildContextMenu()
     }
 
@@ -2819,38 +2791,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: Dem Dock folgen
 
-    // MARK: Breite ziehen
-
-    /// Die Hoehe gehoert dem Dock, frei ist nur die Breite.
-    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-        NSSize(width: clampWidth(frameSize.width), height: sender.frame.height)
-    }
-
-    func windowWillStartLiveResize(_ notification: Notification) {
-        liveResizing = true
-    }
-
-    func windowDidResize(_ notification: Notification) {
-        // Waehrend des Ziehens ist der Fensterrahmen die Wahrheit; die
-        // Nachfuehrung darf ihn nicht ueberschreiben.
-        pendingWidth = panel.frame.width
-        updateText()            // Album und Vorschau haengen an der Breite
-    }
-
-    func windowDidEndLiveResize(_ notification: Notification) {
-        liveResizing = false
-        if let width = pendingWidth {
-            UserDefaults.standard.set(Double(width), forKey: widthKey)
-        }
-        pendingWidth = nil
-        lastDockFrame = .null    // wieder an den Dock heranziehen
-        followDock()
-        view.menu = buildContextMenu()
-        writeDiagnostics()
-    }
-
     private func followDock() {
-        guard !liveResizing else { return }
         // Der Dock aendert seine Groesse nur aus zwei Gruenden: der Zeiger ist
         // bei ihm (Vergroesserung) oder er faehrt ein und aus. Beides passiert
         // nur in seiner Naehe. Sonst genuegen fuenf Blicke je Sekunde. Die

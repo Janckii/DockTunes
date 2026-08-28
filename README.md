@@ -52,7 +52,6 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
 | Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
 | Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie kurz an |
-| An einer Kante ziehen | Breite ändern, wie bei einem Fenster |
 | Rechtsklick | Menü mit allen Einstellungen |
 
 ## Breite
@@ -60,11 +59,11 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 Die Breite ist **fest** und wird nicht vom Titel bestimmt. Eine mitwandernde
 Breite wäre bei jedem Lied eine andere, und das Panel wäre ständig in Bewegung.
 
-Geändert wird sie durch Ziehen an einer Kante, genau wie bei einem Fenster –
-das Ziehen macht der Fenster-Server selbst, nicht die App. Unter 200 Punkten
-geht es nicht, darüber bis knapp an den Bildschirmrand. Die Höhe bleibt die des
-Docks. Der Fokus bleibt dabei, wo er war (nachgemessen: die vorderste App
-wechselt nicht).
+Eingestellt wird sie im Rechtsklick-Menü unter **Breite**, in vier Stufen.
+Die Stufen sind nicht rund gewählt, sondern an den Inhalt gekoppelt: jede
+bringt etwas Sichtbares mehr. Normal- und Liedtext-Modus haben eigene Stufen.
+Zwischenwerte über `panelWidth` und `lyricsWidth`, siehe Einstellungen;
+weniger als 200 Punkte nimmt das Panel nicht an.
 
 **Je breiter, desto mehr steht drin:**
 
@@ -139,7 +138,7 @@ Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
 defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
 defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
 defaults write de.jancko.docktunes rimAlpha -float 0.30   # Stärke der Lichtkante
-defaults write de.jancko.docktunes panelWidth -float 460  # Breite, normal
+defaults write de.jancko.docktunes panelWidth -float 460  # Breite, normal (ab 200)
 defaults write de.jancko.docktunes lyricsWidth -float 580 # Breite im Liedtext-Modus
 ```
 
@@ -306,38 +305,6 @@ Play und Pause sind unterschiedlich geformt und brauchen je einen eigenen
 Feinversatz – mit einem gemeinsamen Wert lag der Abstand beim Pause-Zeichen um
 einen Punkt daneben.
 
-## Kein Größenzeiger an der Kante
-
-Das Ziehen funktioniert, der Mauszeiger wechselt dabei aber **nicht** auf das
-Größensymbol. Das ist kein Versehen, sondern durchgemessen – sieben Anläufe:
-
-| Versuch | Ergebnis |
-|---|---|
-| `NSCursor.set()` beim Eintreten | wirkungslos |
-| `NSCursor.push()` | wirkungslos |
-| zehnmal je Sekunde nachgesetzt | wirkungslos |
-| dasselbe für die ganze Panelfläche | wirkungslos |
-| `.cursorUpdate`-Zone | Ereignis kommt nicht an |
-| `.mouseMoved`-Zone | Ereignis kommt nicht an |
-| Fenster auf `.floating` statt Dock-Ebene | wirkungslos |
-| App aktiviert (`.regular` + `activate`) | wirkungslos |
-
-Den Mauszeiger vergibt die aktive Anwendung. DockTunes aktiviert sich nie –
-Klicks aufs Panel sollen den Fokus nicht stehlen, das ist eine der
-Grundbedingungen. `mouseEntered` erreicht ein Fenster ohne Fokus noch,
-`mouseMoved` und `cursorUpdate` nicht mehr.
-
-Das **Ziehen** dagegen geht, seit das Panel einen echten (unsichtbar gemachten)
-Fensterrahmen hat: `.titled` statt `.borderless`, dazu `.resizable`. Zwei
-Dinge waren dafür nötig:
-
-- `canBecomeKey` muss `true` sein, sonst übernimmt der Fenster-Server die
-  Kanten nicht. Zusammen mit `.nonactivatingPanel` wird die App davon **nicht**
-  aktiv – nachgemessen: die vorderste Anwendung bleibt dieselbe.
-- `constrainFrameRect` muss überschrieben werden. macOS schiebt Fenster mit
-  Titelrahmen selbsttätig aus dem Dock-Bereich heraus, gemessen um 50 Punkte
-  nach oben. Genau dort soll das Panel aber sitzen.
-
 ## Signatur
 
 `build.sh` signiert ad-hoc, wenn kein eigenes Zertifikat da ist. Das genügt zum
@@ -372,6 +339,24 @@ Karaoke aus, ohne es zu sein.
 Was ehrlich ginge: ein Balken, der in der Zeilendauer einmal von links nach
 rechts durch die Zeile läuft. Der stimmt an beiden Enden genau und behauptet
 dazwischen nichts über einzelne Wörter.
+
+**Die Breite mit der Maus ziehen, wie bei einem Fenster.** Probiert und wieder
+ausgebaut. Das Ziehen selbst ließ sich hinbekommen (ein echter, unsichtbar
+gemachter Fensterrahmen: `.titled` mit `.resizable`, dazu `canBecomeKey` und
+ein überschriebenes `constrainFrameRect` – macOS schiebt Fenster mit Rahmen
+sonst um 50 Punkte aus dem Dock-Bereich). Nur der Mauszeiger wechselte an der
+Kante nie auf das Größensymbol, und ohne das fehlt der Hinweis, dass man dort
+ziehen kann.
+
+Acht Anläufe für den Zeiger, alle wirkungslos: `NSCursor.set()`, `push()`,
+zehnmal je Sekunde nachgesetzt, für die ganze Panelfläche, per
+`.cursorUpdate`-Zone, per `.mouseMoved`-Zone, auf `.floating` statt Dock-Ebene,
+und mit aktivierter App. Den Zeiger vergibt die aktive Anwendung, und DockTunes
+aktiviert sich nie – Klicks aufs Panel sollen den Fokus nicht stehlen.
+`mouseEntered` erreicht ein Fenster ohne Fokus noch, `mouseMoved` und
+`cursorUpdate` nicht mehr.
+
+Die vier Stufen im Menü tun dasselbe mit weniger Umstand.
 
 ## Mitmachen
 
