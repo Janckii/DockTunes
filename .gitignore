@@ -1,0 +1,10 @@
+# Signaturschlüssel gehören niemals ins Repository
+signing/
+*.p12
+*.pem
+*.key
+
+# Baubare Ergebnisse
+*.app/
+build/
+.DS_Store
