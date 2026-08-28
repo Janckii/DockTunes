@@ -1572,9 +1572,6 @@ private final class PlayerView: NSView {
     // Der Interpret braucht keine Breite, er steht unter dem Titel. Selbst im
     // schmalsten Panel bleibt fuer beide Zeilen Platz.
     private var showsArtistLine: Bool { true }
-    private var showsPreviousButton: Bool { bounds.width >= 300 }
-    private var showsAddButton: Bool { bounds.width >= 360 }
-    private var showsRepeatButton: Bool { bounds.width >= 380 }
     var showsExtras: Bool { bounds.width >= 520 }
     /// Ganz breit ist auch fuer die naechste Liedtextzeile Platz – dann
     /// verdraengt sie die laufende nicht mehr.
@@ -2041,8 +2038,14 @@ private final class PlayerView: NSView {
     /// halbheller Flaeche selbsttaetig auf und kippen ueber sehr heller sogar
     /// ins Dunkle. Nur die Glasvariante 5 verlaeuft ebenso gerade
     /// (hell 0,634 · G + 85, dunkel 0,677 · G + 37).
-    /// Der Rest ist ein fester Abzug per "plusD": 24 Stufen im Hellmodus,
-    /// 14,5 im Dunkelmodus. Ein Abzug aendert nur den Sockel, nicht die
+    /// Der Rest ist ein fester Abzug per "plusD": 30,5 Stufen im Hellmodus,
+    /// 14,5 im Dunkelmodus.
+    ///
+    /// Der Abzug haengt am Bildschirm: auf dem eingebauten Retina-Schirm mischt
+    /// das Glas anders als auf einem aeusseren. Gemessen mit 24 Stufen Abzug
+    /// lag die Flaeche innen 12 Stufen zu hell, aussen 4. Eingestellt ist der
+    /// Wert fuer den eingebauten Schirm (30,5), weil das der Normalfall ist;
+    /// aussen bleiben damit rund 10 Stufen. Feinjustage: liftLight. Ein Abzug aendert nur den Sockel, nicht die
     /// Steigung – eine normale Deckschicht wuerde beides zugleich verschieben.
     /// Bleibt die Steigungsdifferenz von 0,026 bzw. 0,043; der Abzug ist so
     /// gewaehlt, dass sie sich auf beide Enden verteilt. Groesste Abweichung
@@ -2059,7 +2062,7 @@ private final class PlayerView: NSView {
         // Hell 24 Stufen (Glas 0,634·G+85 gegen Dock 0,660·G+58),
         // dunkel 14,5 Stufen (Glas 0,677·G+37 gegen Dock 0,720·G+17).
         let liftGray = d.object(forKey: dark ? "liftDark" : "liftLight") as? Double
-            ?? (dark ? 0.9431 : 0.9059)
+            ?? (dark ? 0.9431 : 0.8804)
         shade.layer?.backgroundColor = NSColor(calibratedWhite: shadeWhite, alpha: opacity).cgColor
         boost.layer?.compositingFilter = d.string(forKey: "boostFilter") ?? "plusD"
         boost.layer?.backgroundColor = NSColor(calibratedWhite: liftGray, alpha: 1).cgColor
@@ -2246,6 +2249,28 @@ private final class PlayerView: NSView {
         marquee.add(move, forKey: "lauftext")
     }
 
+    /// Mindestplatz fuer den Titel. Darunter waere er nur noch ein hastig
+    /// durchlaufender Schnipsel.
+    static let minTitleRoom: CGFloat = 70
+
+    /// Breite, die die Knopfreihe braucht – gerechnet, nicht gesetzt.
+    private func buttonsAdvance(add: Bool, repeatOn: Bool, previous: Bool) -> CGFloat {
+        let symbolGap: CGFloat = 12
+        var total: CGFloat = 0
+        let set: [(NSButton, String, Bool)] = [
+            (addButton, "plus", add), (repeatButton, "repeat", repeatOn),
+            (nextButton, "next", true), (playButton, "play", true),
+            (previousButton, "previous", previous),
+        ]
+        for (button, key, shown) in set where shown {
+            let full = key + (button === playButton || button === repeatButton
+                              ? (button.image?.accessibilityDescription ?? "") : "")
+            let ink = Self.ink(of: button.image, key: full)
+            total += ink.left + ink.width + ink.right + symbolGap
+        }
+        return total
+    }
+
     override func layout() {
         super.layout()
 
@@ -2297,9 +2322,27 @@ private final class PlayerView: NSView {
         // x wandert von rechts nach links und markiert immer die Kante der
         // gezeichneten Flaeche – die Raender des Symbols werden herausgerechnet.
         let keys = ["plus", "repeat", "next", "play", "previous"]
-        previousButton.isHidden = !showsPreviousButton
-        addButton.isHidden = !showsAddButton
-        repeatButton.isHidden = !showsRepeatButton
+        // Was hineinpasst, wird ausgerechnet statt an feste Breiten gebunden.
+        // Auf einem 1512 Punkte breiten Bildschirm bleiben neben einem 850
+        // Punkte breiten Dock nur 327 – feste Schwellen von 360 und 380 haetten
+        // dort Plus und Wiederholen fuer immer verschluckt, obwohl beide passen.
+        // Weggelassen wird in der Reihenfolge des Nutzens: Plus zuerst, dann
+        // Wiederholen, dann Zurueck. Weiter und Abspielen bleiben immer.
+        let textLeftForFit = showsLyrics ? pad : pad + (bounds.height - pad * 2 - 2) + gap
+        var showAdd = true, showRepeat = true, showPrevious = true
+        for _ in 0..<3 {
+            let used = buttonsAdvance(add: showAdd, repeatOn: showRepeat, previous: showPrevious)
+                + (showsSpectrum ? 30 + gap : 0)
+            let room = bounds.width - pad - used - textLeftForFit - gap
+            if room >= Self.minTitleRoom { break }
+            if showAdd { showAdd = false }
+            else if showRepeat { showRepeat = false }
+            else if showPrevious { showPrevious = false }
+            else { break }
+        }
+        previousButton.isHidden = !showPrevious
+        addButton.isHidden = !showAdd
+        repeatButton.isHidden = !showRepeat
         for (index, button) in [addButton, repeatButton, nextButton, playButton, previousButton].enumerated() {
             if button.isHidden { continue }
             let key = keys[index] + (button === playButton || button === repeatButton
@@ -2333,7 +2376,7 @@ private final class PlayerView: NSView {
         let spectrumWidth: CGFloat = 30
         let textLeft = showsLyrics ? pad : cover.frame.maxX + gap
         let roomForTitle = rightEdge - textLeft - (spectrumWidth + gap)
-        let spectrumVisible = showsSpectrum && roomForTitle >= 70
+        let spectrumVisible = showsSpectrum && roomForTitle >= Self.minTitleRoom
         spectrum.isHidden = !spectrumVisible
         if spectrumVisible {
             let spectrumHeight: CGFloat = 20
@@ -2460,6 +2503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Wohin das Panel unterwegs ist – die Bewegung dorthin läuft weich.
     private var lastDockFrame: CGRect = .null
     private var tick = 0
+    private var offScreenSince: Date?
     private var fastFollow = true
     private var fastFollowRate: Double = 60
     private var pointerNearDock = false
@@ -2496,10 +2540,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// eine lesbare Titelzeile und ein Knopf brauchen zusammen so viel.
     static let minWidth: CGFloat = 200
 
+    /// Das Panel steht neben dem Dock, nicht um ihn herum – es zaehlt also der
+    /// Platz auf **einer** Seite, nicht die Restbreite des Bildschirms. Auf
+    /// einem 1512 Punkte breiten Bildschirm mit 850 Punkte breitem Dock sind
+    /// das 319 je Seite, nicht 630.
     private func clampWidth(_ width: CGFloat) -> CGFloat {
-        let screen = NSScreen.screens.first(where: { $0.frame.intersects(lastDockFrame) })
-            ?? NSScreen.main
-        let room = max(Self.minWidth, (screen?.frame.width ?? 1440) - lastDockFrame.width - 4 * gap)
+        guard !lastDockFrame.isNull,
+              let screen = NSScreen.screens.first(where: { $0.frame.intersects(lastDockFrame) })
+        else { return max(width, Self.minWidth) }
+        let roomRight = (screen.frame.maxX - 4) - (lastDockFrame.maxX + gap)
+        let roomLeft = (lastDockFrame.minX - gap) - (screen.frame.minX + 4)
+        let room = max(Self.minWidth, max(roomRight, roomLeft))
         return min(max(width, Self.minWidth), room)
     }
     private var spectrumEnabled: Bool { UserDefaults.standard.bool(forKey: "showSpectrum") }
@@ -3312,6 +3363,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(dockFrame) }),
               screen.frame.contains(dockFrame) else {
+            // Faehrt der Dock aus (automatisches Ausblenden), liegt sein
+            // Rechteck dauerhaft ausserhalb – dann gehoert das Panel weg. Beim
+            // Bildschirmwechsel ist derselbe Zustand nur ein Wimpernschlag
+            // lang da. Ein Viertel Sekunde Geduld trennt beides.
+            if offScreenSince == nil { offScreenSince = Date() }
+            if let since = offScreenSince, Date().timeIntervalSince(since) > 0.25,
+               panel.isVisible {
+                panel.orderOut(nil)
+                noteFollow("verborgen: Dock ausgefahren")
+                writeDiagnostics()
+                return
+            }
             // Der Dock wandert gerade zwischen den Bildschirmen; sein Rechteck
             // passt dabei auf keinen einzelnen. Frueher wurde das Panel hier
             // ausgeblendet und gleich darauf wieder eingeblendet – genau das
@@ -3326,17 +3389,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if dockFrame == lastDockFrame, panel.isVisible, panel.frame.width == panelWidth {
             return
         }
+        offScreenSince = nil
         lastDockFrame = dockFrame
         cachedWidth = nil          // haengt am Platz neben dem Dock
 
-        var frame = CGRect(x: dockFrame.maxX + gap, y: dockFrame.minY,
-                           width: panelWidth, height: dockFrame.height)
-        if frame.maxX > screen.frame.maxX - 4 {
-            frame.origin.x = dockFrame.minX - gap - panelWidth
+        // Platz links und rechts vom Dock getrennt rechnen. Auf einem schmalen
+        // Bildschirm mit breitem Dock passt die eingestellte Breite auf keine
+        // Seite – frueher rutschte das Panel dann an den Bildschirmrand und lag
+        // ueber dem Dock. Jetzt nimmt es die groessere Seite und wird nur so
+        // breit, wie dort Platz ist.
+        let roomRight = (screen.frame.maxX - 4) - (dockFrame.maxX + gap)
+        let roomLeft = (dockFrame.minX - gap) - (screen.frame.minX + 4)
+        let wanted = panelWidth
+        let width: CGFloat
+        let originX: CGFloat
+        if roomRight >= wanted {
+            width = wanted; originX = dockFrame.maxX + gap
+        } else if roomLeft >= wanted {
+            width = wanted; originX = dockFrame.minX - gap - wanted
+        } else if roomRight >= roomLeft {
+            width = max(Self.minWidth, roomRight); originX = dockFrame.maxX + gap
+        } else {
+            width = max(Self.minWidth, roomLeft); originX = dockFrame.minX - gap - max(Self.minWidth, roomLeft)
         }
-        if frame.minX < screen.frame.minX + 4 {
-            frame.origin.x = screen.frame.minX + 4
-        }
+        let frame = CGRect(x: originX, y: dockFrame.minY,
+                           width: width, height: dockFrame.height)
 
         if frame != panel.frame {
             panel.setFrame(frame, display: false)

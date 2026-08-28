@@ -19,7 +19,8 @@
 - **Looks like the Dock, not like a widget.** The fill is measured against the
   Dock, not guessed: it blends by the same straight rule, in light and dark
   mode, with the same one-point light rim top and bottom and no drop shadow.
-  Largest remaining deviation: 4 of 255 steps.
+  Largest remaining deviation: 6 of 255 steps on the built-in display. The
+  glass mixes slightly differently on external screens; `liftLight` adjusts it.
 - **Follows the Dock** — its height, its width when it magnifies, across
   displays, and it disappears with it in full screen.
 - Cover, title, artist, transport buttons, repeat in three states.
