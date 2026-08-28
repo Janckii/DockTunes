@@ -423,13 +423,14 @@ private enum SpotifyWeb {
                         switch status {
                         case 403:
                             text = "Spotify verweigert den Zugriff (403).\n\n"
-                                + "Meistens fehlt das eigene Konto in der Spotify-App: "
+                                + "Wenn das bei jeder Playlist passiert, liegt es meist "
+                                + "am eigenen Konto in der Spotify-App: "
                                 + "developer.spotify.com/dashboard öffnen, die App "
                                 + "auswählen, Settings → User Management, sich selbst "
-                                + "mit Name und E-Mail eintragen. Solange das fehlt, "
-                                + "darf die App nur Profil und Playlist-Liste lesen.\n\n"
-                                + "Zweite Möglichkeit: die Playlist gehört jemand "
-                                + "anderem – dort darf nur der Besitzer etwas ändern."
+                                + "mit Name und E-Mail eintragen.\n\n"
+                                + "Bei einer einzelnen Playlist heißt es meist: sie "
+                                + "gehört jemand anderem – dort darf nur der Besitzer "
+                                + "etwas ändern."
                         case 401: text = "Die Anmeldung ist abgelaufen. Im Menü einmal trennen und neu verbinden."
                         case 404: text = "Die Playlist gibt es nicht mehr."
                         case 429: text = "Zu viele Anfragen an Spotify. Gleich nochmal versuchen."
@@ -494,7 +495,13 @@ private enum SpotifyWeb {
     static func add(trackURI: String, to playlist: Playlist,
                     completion: @escaping (Result<Void, Error>) -> Void) {
         let body = try? JSONSerialization.data(withJSONObject: ["uris": [trackURI]])
-        call("playlists/\(playlist.id)/tracks", method: "POST", body: body) { result in
+        // "/items", nicht "/tracks": den alten Pfad weist Spotify inzwischen mit
+        // 403 ab, ohne Begruendung. Nachgemessen am selben Konto, selber
+        // Playlist, selbem Schluessel: /tracks 403, /items 201. Alles andere
+        // (Profil, Playlist-Liste, Playlist-Details, Suche) antwortet auf
+        // beiden Wegen normal – der Fehler sah deshalb nach einer fehlenden
+        // Berechtigung aus und war keine.
+        call("playlists/\(playlist.id)/items", method: "POST", body: body) { result in
             completion(result.map { _ in () })
         }
     }

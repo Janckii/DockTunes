@@ -164,20 +164,34 @@ Das geht nicht über AppleScript – Spotify kennt dafür keinen Befehl – sond
    E-Mail des eigenen Spotify-Kontos
 4. Client-ID kopieren und beim ersten Klick auf das Pluszeichen einsetzen
 
-Schritt 3 ist leicht zu übersehen und die häufigste Ursache für
-„Titel konnte nicht hinzugefügt werden – Fehler 403". Solange das eigene Konto
-dort fehlt, steht die App in Spotifys Entwicklungsmodus und darf nur einen
-kleinen Teil der Schnittstelle nutzen. Nachgemessen an einem betroffenen
-Konto – die Berechtigungen waren dabei korrekt erteilt und die Playlist die
-eigene:
+Schritt 3 ist leicht zu übersehen und eine mögliche Ursache für
+„Titel konnte nicht hinzugefügt werden – Fehler 403".
 
-| Abruf | |
+## Der Pfad heißt `/items`, nicht `/tracks`
+
+Ein 403 beim Hinzufügen hat noch eine zweite, viel unauffälligere Ursache, und
+die hat hier Stunden gekostet: **Spotify weist den dokumentierten Pfad
+`/playlists/{id}/tracks` inzwischen mit 403 ab.** Der Nachfolger `/items`
+antwortet normal – gleicher Zugang, gleiche Playlist, gleicher Rumpf:
+
+| Aufruf | |
 |---|---|
-| eigenes Profil lesen | 200 |
-| eigene Playlists lesen | 200 |
-| Playlist-**Inhalt** lesen | 403 |
-| Playlist anlegen | 403 |
-| Titel hinzufügen | 403 |
+| `GET /me` | 200 |
+| `GET /me/playlists` | 200 |
+| `GET /playlists/{id}` | 200 |
+| `GET /search`, `/tracks`, `/albums` | 200 |
+| `GET /playlists/{id}/tracks` | **403** |
+| `POST /playlists/{id}/tracks` | **403** |
+| `GET /playlists/{id}/items` | **200** |
+| `POST /playlists/{id}/items` | **201** |
+
+Weil alles andere normal antwortete, sah der Fehler nach einer fehlenden
+Berechtigung aus – die Berechtigungen waren aber korrekt erteilt (Spotify
+selbst nennt sie beim Erneuern des Zugangs), die Playlist war die eigene, und
+auch eine ganz frische Anmeldung änderte nichts.
+
+Beim Entfernen ist der Rumpf ebenfalls anders: `{"items": [{"uri": …}]}`
+statt `{"tracks": […]}`.
 
 Angemeldet wird per PKCE, es liegt also kein Geheimnis in der App. Die
 Zugangsdaten landen in `~/Library/Application Support/DockTunes/credentials.json`
