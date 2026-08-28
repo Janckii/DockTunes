@@ -1373,13 +1373,12 @@ private final class PlayerView: NSView {
     let spectrum = SpectrumView()
     var showsSpectrum = false { didSet { needsLayout = true } }
 
-    // Was bei welcher Breite dazukommt. Die Grenzen sind so gesetzt, dass ein
-    // Element erst erscheint, wenn es ohne Gedraenge Platz hat – nicht sobald
-    // es rechnerisch gerade so hineinpasst.
-    private var showsArtistLine: Bool { bounds.width >= 260 }
-    private var showsSkipButtons: Bool { bounds.width >= 320 }
-    private var spectrumVisible: Bool { showsSpectrum && bounds.width >= 400 }
-    var showsExtras: Bool { bounds.width >= 560 }
+    // Was bei welcher Breite dazukommt. Die Reihenfolge folgt dem Nutzen:
+    // weiter ist wichtiger als zurueck, und beides wichtiger als das Plus.
+    private var showsArtistLine: Bool { bounds.width >= 280 }
+    private var showsPreviousButton: Bool { bounds.width >= 300 }
+    private var showsAddButton: Bool { bounds.width >= 360 }
+    var showsExtras: Bool { bounds.width >= 520 }
     /// Ganz breit ist auch fuer die naechste Liedtextzeile Platz – dann
     /// verdraengt sie die laufende nicht mehr.
     var showsLyricPreview: Bool { bounds.width >= 700 }
@@ -1930,7 +1929,7 @@ private final class PlayerView: NSView {
         let textWidth = min(max(ceil(max(titleWidth, artistWidth)) + 3, 90), showsLyrics ? 330 : 190)
         let buttons = 4 * min(26, height - pad * 2) + 3 * 4
         var total = pad + coverSize + (showsLyrics ? 0 : gap) + textWidth + gap + buttons + pad
-        if spectrumVisible { total += 30 + gap }
+        if showsSpectrum { total += 30 + gap }
         return ceil(total)
     }
 
@@ -1985,8 +1984,8 @@ private final class PlayerView: NSView {
         // x wandert von rechts nach links und markiert immer die Kante der
         // gezeichneten Flaeche – die Raender des Symbols werden herausgerechnet.
         let keys = ["plus", "next", "play", "previous"]
-        previousButton.isHidden = !showsSkipButtons
-        nextButton.isHidden = !showsSkipButtons
+        previousButton.isHidden = !showsPreviousButton
+        addButton.isHidden = !showsAddButton
         for (index, button) in [addButton, nextButton, playButton, previousButton].enumerated() {
             if button.isHidden { continue }
             let key = keys[index] + (button === playButton ? (button.image?.accessibilityDescription ?? "") : "")
@@ -2011,10 +2010,23 @@ private final class PlayerView: NSView {
         // 2 Punkte Zugabe: nachgemessen liegt die Tonanzeige sonst zu dicht am Knopf.
         var rightEdge = x + symbolGap - gap - 2
 
-        // Tonanzeige davor
+        // Tonanzeige davor. Nicht ab einer festen Breite, sondern wenn nach
+        // dem Text noch Platz bleibt – bei kurzem Titel passt sie auch in ein
+        // schmales Panel. Im Liedtext-Modus waere das unruhig, dort wechselt
+        // der Text alle paar Sekunden; deshalb bleibt es dort bei einer Grenze.
+        let spectrumWidth: CGFloat = 30
+        let textLeft = showsLyrics ? pad : cover.frame.maxX + gap
+        let needed = ceil(max(titleLabel.attributedStringValue.size().width,
+                              artistLabel.isHidden ? 0 : artistLabel.attributedStringValue.size().width))
+        // Waehrend der Lautstaerkeanzeige steht in der Unterzeile ein anderer,
+        // anders langer Text. Ohne diese Sperre koennte die Tonanzeige fuer
+        // die 1,4 Sekunden verschwinden und danach zurueckspringen.
+        let spectrumVisible = showsSpectrum && (progressBar.showsVolume
+            ? !spectrum.isHidden
+            : showsLyrics ? bounds.width >= 460
+                          : (rightEdge - textLeft) - needed >= spectrumWidth + gap)
         spectrum.isHidden = !spectrumVisible
         if spectrumVisible {
-            let spectrumWidth: CGFloat = 30
             let spectrumHeight: CGFloat = 20
             spectrum.frame = CGRect(x: rightEdge - spectrumWidth,
                                     y: round((bounds.height - spectrumHeight) / 2) + lift,
@@ -2023,7 +2035,6 @@ private final class PlayerView: NSView {
         }
 
         // Titel und Unterzeile
-        let textLeft = showsLyrics ? pad : cover.frame.maxX + gap
         let textWidth = max(20, rightEdge - textLeft)
         let lineHeight: CGFloat = 14
         let top = (bounds.height - lineHeight * 2) / 2
@@ -2142,7 +2153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Titel eine andere, und das Panel spraenge staendig hin und her.
         // Eingestellt wird sie im Rechtsklick-Menue.
         let stored = UserDefaults.standard.object(forKey: widthKey) as? Double
-            ?? (lyricsMode ? 520 : 420)
+            ?? (lyricsMode ? 520 : 380)
         return clampWidth(CGFloat(stored))
     }
 
@@ -2342,9 +2353,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // bringt etwas Sichtbares mehr (siehe README, Abschnitt Breite).
         let steps: [(String, Double)] = lyricsMode
             ? [("Schmal", 420), ("Normal", 520), ("Breit", 640), ("Sehr breit", 760)]
-            : [("Schmal", 260), ("Normal", 420), ("Breit", 560), ("Sehr breit", 700)]
+            : [("Schmal", 250), ("Normal", 380), ("Breit", 520), ("Sehr breit", 640)]
         let current = UserDefaults.standard.object(forKey: widthKey) as? Double
-            ?? (lyricsMode ? 520 : 420)
+            ?? (lyricsMode ? 520 : 380)
         let widthMenu = NSMenu()
         for (title, value) in steps {
             let item = NSMenuItem(title: title, action: #selector(setLyricsWidth(_:)), keyEquivalent: "")
@@ -2671,6 +2682,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Zeigt entweder Titel und Interpret oder die mitlaufende Textzeile.
     private func updateText() {
+        guard !view.progressBar.showsVolume else { return }
         guard lyricsMode else {
             // Das Album kommt erst bei grosser Breite dazu; darunter waere die
             // Zeile nur abgeschnitten.
@@ -2748,7 +2760,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.view.progressBar.showsVolume = false
             self.view.forceProgressVisible(false)
-            self.updateText()
+            self.updateText()          // erst jetzt wieder erlaubt
             self.updateProgress()
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -2761,7 +2773,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateProgress() {
-        if lyricsMode, !lyricLines.isEmpty, track.isPlaying { updateText() }
+        // Waehrend die Lautstaerke angezeigt wird, darf der Liedtext nicht
+        // nachruecken – er ueberschriebe die Anzeige zehnmal je Sekunde.
+        if lyricsMode, !lyricLines.isEmpty, track.isPlaying,
+           !view.progressBar.showsVolume { updateText() }
         // Waehrend die Lautstaerke angezeigt wird, darf die Position die Leiste
         // nicht ueberschreiben – sonst springt sie im Takt hin und her.
         guard !scrubbing, !view.progressBar.showsVolume, track.duration > 0 else { return }

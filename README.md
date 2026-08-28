@@ -51,7 +51,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
 | Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
-| Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie kurz an |
+| Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie 1,4 s lang an – auch im Liedtext-Modus, dort pausiert der Text so lange |
 | Rechtsklick | Menü mit allen Einstellungen |
 
 ## Breite
@@ -59,7 +59,8 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 Die Breite ist **fest** und wird nicht vom Titel bestimmt. Eine mitwandernde
 Breite wäre bei jedem Lied eine andere, und das Panel wäre ständig in Bewegung.
 
-Eingestellt wird sie im Rechtsklick-Menü unter **Breite**, in vier Stufen.
+Eingestellt wird sie im Rechtsklick-Menü unter **Breite**, in vier Stufen
+(normal 250 / 380 / 520 / 640, im Liedtext-Modus 420 / 520 / 640 / 760).
 Die Stufen sind nicht rund gewählt, sondern an den Inhalt gekoppelt: jede
 bringt etwas Sichtbares mehr. Normal- und Liedtext-Modus haben eigene Stufen.
 Zwischenwerte über `panelWidth` und `lyricsWidth`, siehe Einstellungen;
@@ -69,12 +70,21 @@ weniger als 200 Punkte nimmt das Panel nicht an.
 
 | ab | kommt dazu |
 |---|---|
-| 200 | Cover, Titel, Abspielen/Pause, Playlist-Knopf |
-| 260 | Interpret |
-| 320 | Vor und Zurück |
-| 400 | Tonanzeige |
-| 560 | Album, und Zeitleiste samt Zeiten dauerhaft statt nur beim Zeigen |
+| 200 | Cover, Titel, Abspielen/Pause, Weiter |
+| 280 | Interpret |
+| 300 | Zurück |
+| 360 | Playlist-Knopf |
+| 520 | Album, und Zeitleiste samt Zeiten dauerhaft statt nur beim Zeigen |
 | 700 | im Liedtext-Modus: die nächste Zeile als Vorschau |
+
+Die Reihenfolge folgt dem Nutzen: **weiter** ist wichtiger als zurück, und
+beides wichtiger als das Plus – im schmalsten Panel steht deshalb die
+Weiter-Taste, nicht der Playlist-Knopf.
+
+Die **Tonanzeige** hängt nicht an einer Breite, sondern am Platz: bleibt nach
+dem Titel noch genug übrig, ist sie da – bei kurzem Titel auch in einem
+schmalen Panel. Im Liedtext-Modus wäre das unruhig, weil der Text alle paar
+Sekunden wechselt; dort gilt eine feste Grenze von 460.
 
 Normal- und Liedtext-Modus merken sich ihre Breite getrennt – der Liedtext
 braucht mehr Platz als Cover, Titel und Knöpfe.
