@@ -82,10 +82,19 @@ Die Reihenfolge folgt dem Nutzen: **weiter** ist wichtiger als zurück, und
 beides wichtiger als das Plus – im schmalsten Panel steht deshalb die
 Weiter-Taste, nicht der Playlist-Knopf.
 
-Der **Wiederholen-Knopf** steht ab der Normalgröße. Ist er aus, wird er
-gedimmt gezeigt statt ausgeblendet – so bleibt sichtbar, dass es die Wahl
-gibt. Er nimmt dem Titel 38 Punkte weg; bei der Normalgröße bleiben dem Text
-damit rund 120 Punkte, und was nicht hineinpasst, läuft durch.
+Der **Wiederholen-Knopf** steht ab der Normalgröße und schaltet in drei
+Stufen weiter:
+
+| Klick | Zustand | Symbol |
+|---|---|---|
+| – | aus | gedimmt |
+| 1× | alle wiederholen | hell |
+| 2× | **einzeln** wiederholen | hell, mit der 1 im Symbol |
+| 3× | wieder aus | gedimmt |
+
+Aus wird gedimmt gezeigt statt ausgeblendet – so bleibt sichtbar, dass es die
+Wahl gibt. Der Knopf nimmt dem Titel 38 Punkte weg; bei der Normalgröße
+bleiben dem Text rund 120, und was nicht hineinpasst, läuft durch.
 
 Die **Tonanzeige** läuft auch im schmalen Panel. Ob sie überhaupt erscheint,
 entscheidet der Schalter im Rechtsklick-Menü; sie weicht nur, wenn dem Titel
@@ -370,6 +379,28 @@ Ein Zertifikat liegt aus naheliegenden Gründen nicht im Repository.
 Die App schreibt ihren Zustand nach `/tmp/docktunes-status.txt` – dort steht
 sofort, ob eine Freigabe fehlt, Spotify stumm bleibt oder das Dock nicht
 gefunden wird.
+
+## Einzeltitel wiederholen, selbst gemacht
+
+„Alle wiederholen" ist Spotifys eigene Einstellung. **„Einzeln" kennt Spotify
+über AppleScript nicht** – die Eigenschaft `repeating` ist ein bloßes Ja/Nein,
+nachgesehen im Wörterbuch der App. Über die Web-Schnittstelle ginge es
+(`state=track`), das verlangte aber eine zusätzliche Berechtigung, eine neue
+Anmeldung und Spotify Premium.
+
+Deshalb macht das Panel es selbst: **0,6 Sekunden vor Schluss zurück auf
+Anfang.** Der Abstand ist mit Absicht großzügig – die Position wird zwischen
+den Abrufen hochgerechnet, und zu spät wäre der nächste Titel schon dran.
+Nachgemessen an einem Stück von 155,4 Sekunden: Sprung bei 154,5 zurück auf
+1,1, selber Titel.
+
+Zwei Dinge, die man dazu wissen sollte:
+
+- Spotifys eigene Oberfläche zeigt diesen Zustand **nicht** an, sie weiß nichts
+  davon. Der Zustand steht in den Einstellungen (`repeatOne`) und übersteht
+  einen Neustart.
+- Die letzten 0,6 Sekunden des Stücks fallen weg. Bei einem ausklingenden
+  Schluss ist das zu hören.
 
 ## Was nicht geht
 

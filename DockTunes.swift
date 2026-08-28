@@ -1413,9 +1413,20 @@ private final class PlayerView: NSView {
     let nextButton = NSButton()
     let addButton = NSButton()
     let repeatButton = NSButton()
-    /// Aus wird gedimmt gezeigt, nicht ausgeblendet – so bleibt sichtbar,
+    /// Drei Zustaende: aus (gedimmt), alle (hell), einzeln (hell mit der 1
+    /// im Symbol – so zeigt es auch Apple Music und Spotify selbst).
+    /// Aus wird gedimmt gezeigt statt ausgeblendet, damit sichtbar bleibt,
     /// dass es die Wahl gibt.
-    var repeatOn = false { didSet { repeatButton.alphaValue = repeatOn ? 1 : 0.45 } }
+    var repeatMode = 0 {
+        didSet {
+            guard repeatMode != oldValue else { return }
+            repeatButton.image = Self.symbol(repeatMode == 2 ? "repeat.1" : "repeat",
+                                             repeatMode == 2 ? "Titel einzeln wiederholen"
+                                                             : "Alle wiederholen")
+            repeatButton.alphaValue = repeatMode == 0 ? 0.45 : 1
+            needsLayout = true          // "repeat.1" ist breiter als "repeat"
+        }
+    }
     let progressBar = ProgressBar()
     let timeLabel = NSTextField(labelWithString: "")
     let totalLabel = NSTextField(labelWithString: "")
@@ -1523,7 +1534,7 @@ private final class PlayerView: NSView {
             (previousButton, "backward.fill", "Vorheriger Titel"),
             (playButton, "play.fill", "Abspielen"),
             (nextButton, "forward.fill", "Nächster Titel"),
-            (repeatButton, "repeat", "Titel wiederholen"),
+            (repeatButton, "repeat", "Alle wiederholen"),
             (addButton, "plus.circle", "Zur Playlist hinzufügen"),
         ] {
             button.isBordered = false
@@ -1533,6 +1544,11 @@ private final class PlayerView: NSView {
             button.contentTintColor = .labelColor
             content.addSubview(button)
         }
+
+        // Anfangszustand ausdruecklich setzen: der Beobachter von repeatMode
+        // laeuft nicht, solange sich der Wert nicht aendert – aus haette sonst
+        // beim Start ausgesehen wie an.
+        repeatButton.alphaValue = 0.45
 
         progressBar.alphaValue = 0        // erscheint erst beim Zeigen
         content.addSubview(progressBar)
@@ -2142,7 +2158,8 @@ private final class PlayerView: NSView {
         repeatButton.isHidden = !showsRepeatButton
         for (index, button) in [addButton, repeatButton, nextButton, playButton, previousButton].enumerated() {
             if button.isHidden { continue }
-            let key = keys[index] + (button === playButton ? (button.image?.accessibilityDescription ?? "") : "")
+            let key = keys[index] + (button === playButton || button === repeatButton
+                                     ? (button.image?.accessibilityDescription ?? "") : "")
             let ink = Self.ink(of: button.image, key: key)
             // Rest-Versatz aus der Nachmessung am gezeichneten Bild. Play und
             // Pause sind unterschiedlich geformt und brauchen eigene Werte.
@@ -2282,6 +2299,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var progressTimer: Timer?
     private var pollTimer: Timer?
     private var pollInterval: TimeInterval = 0
+    private var repeatMode = 0
+    private var loopTimer: Timer?
     private var motionTimer: Timer?
     private var spectrumTimer: Timer?
     private let analyzer = AudioSpectrum()
@@ -2763,7 +2782,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.positionAnchor = (new.position, Date())
             if !wasSame || artworkChanged { self.applyTrack(new, reloadArtwork: artworkChanged) }
             if playChanged { self.syncPollRate() }
-            self.view.repeatOn = new.repeating
+            // Spotifys eigenes Wiederholen hat Vorrang; "einzeln" ist unser
+            // Zustand und steht in den Einstellungen.
+            self.repeatMode = new.repeating ? 1
+                : (UserDefaults.standard.bool(forKey: "repeatOne") ? 2 : 0)
+            self.view.repeatMode = self.repeatMode
+            self.armLoop()
             self.updateProgress()
         }
     }
@@ -2879,13 +2903,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.menu = buildContextMenu()
     }
 
+    /// aus → alle → einzeln → aus.
+    ///
+    /// "alle" ist Spotifys eigenes Wiederholen. "einzeln" kennt Spotify ueber
+    /// AppleScript nicht (die Eigenschaft ist ein blosses Ja/Nein, nachgesehen
+    /// im Woerterbuch), deshalb macht das Panel es selbst: kurz vor Schluss
+    /// zurueck auf Anfang. Das braucht weder Web-Anmeldung noch Premium.
     @objc private func toggleRepeat() {
-        let next = !track.repeating
-        Spotify.setRepeating(next)
-        track.repeating = next
-        view.repeatOn = next
+        switch repeatMode {
+        case 0: repeatMode = 1; Spotify.setRepeating(true)
+        case 1: repeatMode = 2; Spotify.setRepeating(false)
+        default: repeatMode = 0; Spotify.setRepeating(false)
+        }
+        UserDefaults.standard.set(repeatMode == 2, forKey: "repeatOne")
+        view.repeatMode = repeatMode
+        armLoop()
         // Spotify braucht einen Moment; danach den echten Stand holen.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.refreshTrack() }
+    }
+
+    /// Springt kurz vor Ende zurueck auf Anfang. Der Abstand ist mit Absicht
+    /// grosszuegig: die Position wird zwischen den Abrufen hochgerechnet, und
+    /// zu spaet waere der naechste Titel schon dran.
+    private func armLoop() {
+        loopTimer?.invalidate()
+        loopTimer = nil
+        guard repeatMode == 2, track.isPlaying, track.duration > 2 else { return }
+        let remaining = track.duration - displayPosition - 0.6
+        guard remaining > 0 else { restartTrack(); return }
+        let timer = Timer(timeInterval: remaining, repeats: false) { [weak self] _ in
+            self?.restartTrack()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        loopTimer = timer
+    }
+
+    private func restartTrack() {
+        guard repeatMode == 2 else { return }
+        Spotify.seek(to: 0)
+        positionAnchor = (0, Date())
+        updateProgress()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.refreshTrack() }
     }
 
     @objc private func toggleLyrics() {
