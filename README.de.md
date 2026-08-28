@@ -293,13 +293,13 @@ dem gerade gearbeitet wird, behält den Fokus.
 Gemessen mit `top -l 5` auf einem Kern. (`ps -o %cpu` taugt hier nicht – das
 ist der Durchschnitt über die ganze Laufzeit, nicht der aktuelle Wert.)
 
-| Zustand | ganz früher | jetzt |
-|---|---|---|
-| pausiert, Zeiger woanders | 4,0 % | **0,9 %** |
-| spielt, Zeiger woanders | 7,6 % | **2,2 %** |
-| spielt, Zeiger auf dem Panel | 9,3 % | **2,8 %** |
-| Liedtext-Modus, spielt | – | **2,5 %** |
-| Titel läuft durch | – | kaum messbar |
+| Zustand | ganz früher | zwischendurch | jetzt |
+|---|---|---|---|
+| pausiert, Zeiger woanders | 4,0 % | 0,9 % | **0,3 %** |
+| spielt, Zeiger woanders | 7,6 % | 2,2 % | **1,4 %** |
+| spielt, Zeiger auf dem Panel | 9,3 % | 2,8 % | **2,1 %** |
+| Liedtext-Modus, spielt | – | 2,5 % | **2,4 %** |
+| spielt, Tonanzeige aus | – | – | **0,3 %** |
 
 Speicher 13–15 MB, über 90 Sekunden unverändert; die einzigen Lecks sind
 9,6 KB in Apples XPC-Schicht.
@@ -329,6 +329,27 @@ Woher die Ersparnis kommt:
   da bewegt sich nichts, und einen echten Wechsel meldet Spotify von selbst.
 - **Feste Puffer in der Tonanalyse** statt vier neuer Anlagen je Durchlauf, und
   der Ringspeicher wird blockweise kopiert statt Wert für Wert mit Modulo.
+- **Der Dock wird nur beobachtet, wenn sich etwas ändern kann.** Der Taktgeber
+  selbst kostet: bei 60 Hz gemessen 0,6 Prozentpunkte mehr als bei 15, auch
+  wenn der Durchlauf nichts tut. Voll läuft er deshalb nur, solange der Zeiger
+  beim Dock steht – nur dann kann sich dessen Größe ändern. Sonst zwölfmal je
+  Sekunde. Nachgemessen: die Vergrößerung wird trotzdem binnen 0,3 Sekunden
+  nachgezogen.
+- **Der häufige Abruf holt nur noch die Position.** Der volle Abruf über
+  AppleScript kostet 60 ms, einer nur für Position und Zustand 15 – gemessen an
+  je zwölf Durchläufen. Mehr wird zum Nachziehen nicht gebraucht; Titelwechsel
+  und Start/Stopp meldet Spotify von selbst. Ein voller Abruf läuft als
+  Rückfallebene alle 60 Sekunden.
+- **Und nur, wenn die Position überhaupt zu sehen ist.** Sie steht in der
+  Zeitleiste, und die erscheint beim Zeigen, bei großer Breite und im
+  Liedtext-Modus. Sonst genügen 15 Sekunden statt 5.
+- **Die Breite wird gemerkt.** Sie hängt an einer Einstellung, am Modus und am
+  Platz neben dem Dock – nichts davon ändert sich zwischen zwei Takten. Sie bei
+  jeder Abfrage neu zu holen hieß: einmal in die Einstellungen und einmal durch
+  alle Bildschirme, sechzigmal je Sekunde.
+- **Die Tonanzeige läuft mit 24 statt 30 Bildern je Sekunde** und überspringt
+  Durchläufe, bei denen sich weder Höhe noch Deckkraft sichtbar ändern. Der
+  Mitschnitt selbst kostet 0,4 %, jedes weitere Bild je Sekunde 0,035.
 - **Die Symbolliste des Docks wird gemerkt.** Sie bei jedem Durchlauf unter
   den Kindern zu suchen heißt: ein Feld anlegen und für jedes Kind die Rolle
   erfragen, jede Abfrage ein eigener Aufruf an den Dock-Prozess. Eine

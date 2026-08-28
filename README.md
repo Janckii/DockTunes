@@ -33,10 +33,11 @@
 
   | State | CPU | Memory |
   |---|---|---|
-  | paused | 0.9 % | 13 MB |
-  | playing | 2.2 % | 15 MB |
-  | playing, pointer on the panel | 2.8 % | 15 MB |
-  | lyrics mode, playing | 2.5 % | 14 MB |
+  | paused | 0.3 % | 14 MB |
+  | playing | 1.4 % | 15 MB |
+  | playing, pointer on the panel | 2.1 % | 15 MB |
+  | lyrics mode, playing | 2.4 % | 14 MB |
+  | playing, audio meter off | 0.3 % | 13 MB |
 
   Memory is flat over time and the only leaks are 9.6 KB inside Apple's XPC
   layer.

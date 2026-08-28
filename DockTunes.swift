@@ -42,6 +42,27 @@ private enum Spotify {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleID }
     }
 
+    /// Nur Position und Zustand. Kostet gemessen 15 ms statt 60 fuer den
+    /// vollen Abruf – und mehr wird zum Nachziehen der Position nicht
+    /// gebraucht. Titelwechsel und Start/Stopp meldet Spotify von selbst.
+    static func loadPosition(_ completion: @escaping ((TimeInterval, Bool)?) -> Void) {
+        queue.async {
+            guard isRunning else { DispatchQueue.main.async { completion(nil) }; return }
+            let raw = runCached("""
+            tell application "Spotify"
+              return (player position as text) & "|" & (player state as text)
+            end tell
+            """)
+            let parts = raw?.components(separatedBy: "|") ?? []
+            guard parts.count == 2, let pos = Double(parts[0].replacingOccurrences(of: ",", with: ".")) else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            let playing = parts[1] == "playing"
+            DispatchQueue.main.async { completion((pos, playing)) }
+        }
+    }
+
     static func load(_ completion: @escaping (Track) -> Void) {
         queue.async {
             var track = Track()
@@ -1418,9 +1439,26 @@ private final class SpectrumView: NSView {
     var bands: [Float] = [] {
         didSet {
             guard bands.count == oldValue.count else { rebuild(); return }
-            // Unter einem Achtel Punkt ist der Unterschied nicht zu sehen.
-            guard zip(bands, oldValue).contains(where: { abs($0 - $1) > 0.004 }) else { return }
+            // Nur zeichnen lassen, wenn sich sichtbar etwas aendert: gerundet
+            // auf ganze Punkte Hoehe und auf 32 Stufen Deckkraft. Jeder
+            // Durchlauf loest einen Compositor-Umlauf ueber die Glasflaeche
+            // aus – ohne diese Pruefung dreissigmal je Sekunde, auch wenn die
+            // Balken auf derselben Hoehe stehen bleiben.
+            let now = quantised(bands)
+            guard now != lastCommitted else { return }
+            lastCommitted = now
             applyLevels()
+        }
+    }
+
+    private var lastCommitted: [Int32] = []
+
+    private func quantised(_ values: [Float]) -> [Int32] {
+        let h = Float(bounds.height)
+        return values.map { v in
+            let height = max(3, (h * v).rounded())
+            let alpha = (0.35 + 0.5 * v) * 32
+            return Int32(height) &* 64 &+ Int32(alpha.rounded())
         }
     }
     var tone: NSColor = .labelColor { didSet { applyShape() } }
@@ -1446,6 +1484,7 @@ private final class SpectrumView: NSView {
                 return bar
             }
         }
+        lastCommitted = []
         applyShape()
         applyLevels()
     }
@@ -1782,16 +1821,30 @@ private final class PlayerView: NSView {
     var onTextChange: (() -> Void)?
 
     private var lastTimeWidth: CGFloat = -1
+    private var lastRunning = ""
+    private var lastTotal = ""
+    var currentTotal: String { lastTotal }
 
     /// Die Zeiten bestimmen die Feldbreite und damit das ganze Layout. Ein
     /// Neulayout je Sekunde kostet mehr als es bringt: die Breite aendert sich
     /// nur beim Sprung auf zweistellige Minuten.
+    /// Leert die Zeiten und den Merker dazu. Ohne das Zuruecksetzen haelt
+    /// setTimes den naechsten gleichen Wert faelschlich fuer unveraendert und
+    /// die Felder blieben leer.
+    func clearTimes() {
+        lastRunning = ""
+        lastTotal = ""
+        timeLabel.stringValue = ""
+        totalLabel.stringValue = ""
+    }
+
     func setTimes(running: String, total: String) {
+        // Die gesetzten Werte selbst merken: stringValue am Feld abzufragen geht
+        // durch AppKit und passierte sonst bei jedem Durchlauf zweimal.
+        guard running != lastRunning || total != lastTotal else { return }
         var changed = false
-        // Bisher als einzige Beschriftung ohne Schatten – ueber einem hellen
-        // Fenster hinter dem Dock stand sie damit fast unlesbar auf der Flaeche.
-        if timeLabel.stringValue != running { timeLabel.stringValue = running; changed = true }
-        if totalLabel.stringValue != total { totalLabel.stringValue = total; changed = true }
+        if running != lastRunning { lastRunning = running; timeLabel.stringValue = running; changed = true }
+        if total != lastTotal { lastTotal = total; totalLabel.stringValue = total; changed = true }
         guard changed else { return }
         let measured = max(ceil(timeLabel.attributedStringValue.size().width),
                            ceil(totalLabel.attributedStringValue.size().width))
@@ -2389,6 +2442,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var followTimer: Timer?
     private var progressTimer: Timer?
     private var pollTimer: Timer?
+    private var fullPollTimer: Timer?
     private var pollInterval: TimeInterval = 0
     private var repeatMode = 0
     private var noticeUntil = Date.distantPast
@@ -2406,6 +2460,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Wohin das Panel unterwegs ist – die Bewegung dorthin läuft weich.
     private var lastDockFrame: CGRect = .null
     private var tick = 0
+    private var fastFollow = true
+    private var fastFollowRate: Double = 60
     private var pointerNearDock = false
     private var pointerOnPanel = false
     private var scrubbing = false
@@ -2417,10 +2473,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Fest, nicht nach Inhalt: eine mitwandernde Breite waere bei jedem
         // Titel eine andere, und das Panel spraenge staendig hin und her.
         // Eingestellt wird sie im Rechtsklick-Menue.
+        if let cachedWidth { return cachedWidth }
         let stored = UserDefaults.standard.object(forKey: widthKey) as? Double
             ?? (lyricsMode ? 520 : 380)
-        return clampWidth(CGFloat(stored))
+        let width = clampWidth(CGFloat(stored))
+        cachedWidth = width
+        return width
     }
+
+    /// Die Breite haengt an einer Einstellung, am Modus und am Platz neben dem
+    /// Dock – nichts davon aendert sich zwischen zwei Takten. Sie bei jeder
+    /// Abfrage neu zu holen hiess: einmal in die Einstellungen und einmal durch
+    /// alle Bildschirme, sechzigmal je Sekunde.
+    private var cachedWidth: CGFloat?
 
     /// Getrennte Breiten: der Liedtext-Modus braucht mehr Platz als Cover,
     /// Titel und Knoepfe, und beides einzeln zu merken erspart das Nachziehen
@@ -2446,12 +2511,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Bildsynchron: nur so sitzt das Panel auch waehrend der Dock-Vergroesserung
         // exakt am Rand, statt sichtbar hinterherzulaufen. Eine Abfrage kostet 0,06 ms.
         // Abtastrate einstellbar: defaults write de.jancko.docktunes followRate -int 30
-        let rate = max(4.0, min(120.0, UserDefaults.standard.object(forKey: "followRate") as? Double ?? 60))
-        followTimer = schedule(every: 1.0 / rate) { [weak self] in self?.followDock() }
-        progressTimer = schedule(every: 0.1) { [weak self] in self?.updateProgress() }
+        fastFollowRate = max(4.0, min(120.0, UserDefaults.standard.object(forKey: "followRate") as? Double ?? 60))
+        fastFollow = true
+        followTimer = schedule(every: 1.0 / fastFollowRate) { [weak self] in self?.followDock() }
+        // Fuenfmal je Sekunde genuegt: der Strich wandert bei drei Minuten
+        // Spielzeit alle anderthalb Sekunden um einen Punkt, die Sekunden-
+        // anzeige springt einmal je Sekunde, und Liedtextzeilen wechseln alle
+        // paar Sekunden.
+        progressTimer = schedule(every: 0.2) { [weak self] in self?.updateProgress() }
         // Spotify meldet Wechsel von sich aus; dieser Takt ist nur die Rückfallebene
         // und die Nachführung der Wiedergabeposition. Ein Abruf kostet 55 ms.
         syncPollRate()
+        // Rueckfallebene, falls eine Meldung von Spotify ausbleibt.
+        fullPollTimer = schedule(every: 60) { [weak self] in self?.refreshTrack() }
 
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("com.spotify.client.PlaybackStateChanged"),
@@ -2542,7 +2614,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // sagt dasselbe zweimal und wirft den Text beim Ziehen um.
             guard self.track.duration > 0 else { return }
             self.view.setTimes(running: Self.clock(fraction * self.track.duration),
-                               total: self.view.totalLabel.stringValue)
+                               total: self.view.currentTotal)
         }
         view.progressBar.onSeek = { [weak self] fraction in
             guard let self, self.track.duration > 0 else { return }
@@ -2555,8 +2627,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         view.onHoverChange = { [weak self] hovering in
             guard let self else { return }
+            defer { self.syncPollRate() }
             if hovering {
                 self.refreshTrack()
+                self.syncPollRate()
                 Spotify.readVolume { level in
                     guard let level else { return }
                     // Spotify rastet die Lautstaerke intern auf 1/64 – wer 70
@@ -2890,11 +2964,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// bewegt sich nichts, und einen echten Wechsel meldet Spotify von selbst –
     /// da genuegt ein Blick alle 20 Sekunden als Rueckfallebene.
     private func syncPollRate() {
-        let interval: TimeInterval = track.isPlaying ? 5 : 20
+        // Die Wiedergabeposition steht nur in der Zeitleiste, und die ist beim
+        // Zeigen, bei grosser Breite und im Liedtext-Modus zu sehen. Sonst
+        // interessiert sie niemanden, und ein Abruf kostet 55 ms.
+        let needsPosition = view?.isHovering == true || view?.showsExtras == true || lyricsMode
+        let interval: TimeInterval = track.isPlaying ? (needsPosition ? 5 : 15) : 20
         guard pollInterval != interval else { return }
         pollInterval = interval
         pollTimer?.invalidate()
-        pollTimer = schedule(every: interval) { [weak self] in self?.refreshTrack() }
+        pollTimer = schedule(every: interval) { [weak self] in self?.refreshPosition() }
+    }
+
+    /// Zieht nur die Position nach. Aendert sich dabei der Wiedergabezustand,
+    /// ist doch etwas passiert – dann der volle Abruf.
+    private func refreshPosition() {
+        Spotify.loadPosition { [weak self] result in
+            guard let self else { return }
+            guard let position = result else { self.refreshTrack(); return }
+            if position.1 != self.track.isPlaying {
+                self.refreshTrack()
+                return
+            }
+            self.track.position = position.0
+            self.positionAnchor = (position.0, Date())
+            self.updateProgress()
+        }
     }
 
     private func refreshTrack() {
@@ -2955,7 +3049,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startSpectrumUpdates() {
         guard spectrumTimer == nil else { return }
-        let rate = max(5.0, min(60.0, UserDefaults.standard.object(forKey: "spectrumRate") as? Double ?? 30))
+        // 24 statt 30 Bilder je Sekunde: die Balken bewegen sich fuer das Auge
+        // gleich, gemessen kostet der Unterschied 0,3 Prozentpunkte.
+        let rate = max(5.0, min(60.0, UserDefaults.standard.object(forKey: "spectrumRate") as? Double ?? 24))
         let timer = Timer(timeInterval: 1.0 / rate, repeats: true) { [weak self] _ in
             guard let self, self.panel.isVisible, self.view.showsSpectrum else { return }
             self.view.spectrum.bands = self.analyzer.currentBands()
@@ -3027,6 +3123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func setLyricsWidth(_ sender: NSMenuItem) {
         guard let width = sender.representedObject as? Double else { return }
         UserDefaults.standard.set(width, forKey: widthKey)
+        cachedWidth = nil
         lastDockFrame = .null          // Breite geaendert, Position neu setzen
         followDock()
         updateText()                   // Album und Vorschau haengen an der Breite
@@ -3081,6 +3178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.set(!defaults.bool(forKey: "lyricsMode"), forKey: "lyricsMode")
         view.showsLyrics = lyricsMode
         view.menu = buildContextMenu()
+        cachedWidth = nil
         lastDockFrame = .null          // Breite hat sich geändert, Position neu setzen
         if lyricsMode {
             if lyricLines.isEmpty { loadLyrics(for: track) }
@@ -3098,9 +3196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let level {
             view.progressBar.progress = Double(level) / 100
             view.setTexts(title: view.titleLabel.stringValue, subtitle: t("Lautstärke \(level) %", "Volume \(level) %"))
-            // Spielzeiten passen hier nicht dazu
-            view.timeLabel.stringValue = ""
-            view.totalLabel.stringValue = ""
+            view.clearTimes()          // Spielzeiten passen hier nicht dazu
         }
         view.progressBar.showsVolume = true
         view.forceProgressVisible(true)
@@ -3170,6 +3266,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Der Taktgeber selbst kostet: bei 60 Hz gemessen 0,6 Prozentpunkte mehr
+    /// als bei 15, selbst wenn der Durchlauf nichts tut. Voll laeuft er
+    /// deshalb nur, solange der Zeiger beim Dock steht – nur dann kann sich
+    /// dessen Groesse ueberhaupt aendern. Sonst zwoelfmal je Sekunde, was
+    /// genuegt, um die Annaeherung rechtzeitig zu bemerken.
+    private func setFollowRate(fast: Bool) {
+        guard fast != fastFollow else { return }
+        fastFollow = fast
+        followTimer?.invalidate()
+        let hz = fast ? fastFollowRate : 12
+        followTimer = schedule(every: 1.0 / hz) { [weak self] in self?.followDock() }
+        writeDiagnostics()
+    }
+
     private func followDock() {
         // Der Dock aendert seine Groesse nur aus zwei Gruenden: der Zeiger ist
         // bei ihm (Vergroesserung) oder er faehrt ein und aus. Beides passiert
@@ -3178,19 +3288,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // sie macht bei 60 Hz zwei Prozent Rechenzeit aus, gemessen.
         tick &+= 1
         if !lastDockFrame.isNull {
-            // Auch die Zeigerabfrage ist nicht umsonst: sie geht an den
-            // Fensterserver und kostet bei 60 Hz 1,6 % Rechenzeit, gemessen.
-            // Im Ruhezustand genuegt sie zehnmal je Sekunde; steht der Zeiger
-            // beim Dock, wird wieder jeder Takt genutzt.
-            if pointerNearDock || tick % 6 == 0 {
-                let pointer = NSEvent.mouseLocation
-                pointerNearDock = lastDockFrame.insetBy(dx: -180, dy: -180).contains(pointer)
-                pointerOnPanel = panel.frame.contains(pointer)
-            }
-            // Auf dem Panel vergroessert sich der Dock nicht. Nur haeufig genug
-            // hinsehen, um den Uebergang zum Dock nicht zu verpassen.
-            let every = pointerNearDock ? 1 : (pointerOnPanel ? 3 : 12)
-            guard tick % every == 0 else { return }
+            let pointer = NSEvent.mouseLocation
+            // Auf dem Panel vergroessert sich der Dock nicht – und das Panel
+            // liegt im Beobachtungsband des Docks. Ohne diese Unterscheidung
+            // liefe beim Zeigen aufs Panel die volle Rate.
+            pointerOnPanel = panel.frame.contains(pointer)
+            pointerNearDock = !pointerOnPanel
+                && lastDockFrame.insetBy(dx: -180, dy: -180).contains(pointer)
+            setFollowRate(fast: pointerNearDock)
+            // Im langsamen Takt genuegt jeder dritte Blick auf den Dock.
+            if !fastFollow { guard tick % 3 == 0 else { return } }
         }
 
         guard track.hasTrack, let dockFrame = Dock.frame() else {
@@ -3220,6 +3327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         lastDockFrame = dockFrame
+        cachedWidth = nil          // haengt am Platz neben dem Dock
 
         var frame = CGRect(x: dockFrame.maxX + gap, y: dockFrame.minY,
                            width: panelWidth, height: dockFrame.height)
@@ -3280,7 +3388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Panel sichtbar           : \(panel?.isVisible == true)",
             "Auswahlfenster           : \(picker?.isVisible == true ? "offen mit \(pickerCount) Playlists" : "zu")",
             "Nachfuehren, zuletzt     : \(followLog.isEmpty ? "nichts" : followLog.joined(separator: " | "))",
-            "Takt                     : leer=\(lastDockFrame.isNull) beimDock=\(pointerNearDock) aufPanel=\(pointerOnPanel) jeder=\(pointerNearDock ? 1 : (pointerOnPanel ? 3 : 12))",
+            "Takt                     : leer=\(lastDockFrame.isNull) beimDock=\(pointerNearDock) aufPanel=\(pointerOnPanel) schnell=\(fastFollow)",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",
             "Zugangs-Ablage           : \(SpotifyWeb.storageCheck())",
             "Symbolbreiten            : \(PlayerView.inkReport())",
