@@ -8,6 +8,14 @@ import CryptoKit
 import Network
 import ServiceManagement
 
+
+/// Zweisprachig ohne Bundle-Lokalisierung: die App ist eine einzige Datei, und
+/// ein .lproj-Verzeichnis waere fuer drei Dutzend Zeichenketten zu viel
+/// Apparat. Deutsch, wenn das System auf Deutsch steht, sonst Englisch.
+func t(_ de: String, _ en: String) -> String {
+    Locale.preferredLanguages.first?.hasPrefix("de") == true ? de : en
+}
+
 // MARK: - Spotify-Anbindung
 
 private struct Track: Equatable {
@@ -294,7 +302,7 @@ private enum SpotifyWeb {
     /// Öffnet die Spotify-Anmeldung im Browser und wartet auf die Rückleitung.
     static func authorize(completion: @escaping (Result<Void, Error>) -> Void) {
         guard let clientID else {
-            completion(.failure(SimpleError("Es ist noch keine Client-ID hinterlegt.")))
+            completion(.failure(SimpleError(t("Es ist noch keine Client-ID hinterlegt.", "No client ID has been stored yet."))))
             return
         }
         verifier = randomString(64)
@@ -304,17 +312,17 @@ private enum SpotifyWeb {
             listener?.stop()
             listener = nil
             guard returnedState == state else {
-                DispatchQueue.main.async { completion(.failure(SimpleError("Antwort passt nicht zur Anfrage."))) }
+                DispatchQueue.main.async { completion(.failure(SimpleError(t("Antwort passt nicht zur Anfrage.", "The reply does not match the request.")))) }
                 return
             }
             guard let code else {
-                DispatchQueue.main.async { completion(.failure(SimpleError("Die Anmeldung wurde abgebrochen."))) }
+                DispatchQueue.main.async { completion(.failure(SimpleError(t("Die Anmeldung wurde abgebrochen.", "Sign-in was cancelled.")))) }
                 return
             }
             exchange(code: code, clientID: clientID, completion: completion)
         }
         guard listener?.start() == true else {
-            completion(.failure(SimpleError("Port 8888 ist belegt – die Rückleitung kann nicht empfangen werden.")))
+            completion(.failure(SimpleError(t("Port 8888 ist belegt – die Rückleitung kann nicht empfangen werden.", "Port 8888 is busy – the redirect cannot be received."))))
             return
         }
 
@@ -351,7 +359,7 @@ private enum SpotifyWeb {
                 guard let data,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let access = json["access_token"] as? String else {
-                    completion(.failure(SimpleError("Spotify hat keinen Zugang ausgestellt.")))
+                    completion(.failure(SimpleError(t("Spotify hat keinen Zugang ausgestellt.", "Spotify did not issue an access token."))))
                     return
                 }
                 accessToken = access
@@ -393,7 +401,7 @@ private enum SpotifyWeb {
                              completion: @escaping (Result<Data, Error>) -> Void) {
         refreshIfNeeded { token in
             guard let token else {
-                completion(.failure(SimpleError("Nicht mit Spotify verbunden.")))
+                completion(.failure(SimpleError(t("Nicht mit Spotify verbunden.", "Not connected to Spotify."))))
                 return
             }
             var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/" + path)!)
@@ -411,7 +419,8 @@ private enum SpotifyWeb {
                         let text: String
                         switch status {
                         case 403:
-                            text = "Spotify verweigert den Zugriff (403).\n\n"
+                            text = t(
+                                "Spotify verweigert den Zugriff (403).\n\n"
                                 + "Wenn das bei jeder Playlist passiert, liegt es meist "
                                 + "am eigenen Konto in der Spotify-App: "
                                 + "developer.spotify.com/dashboard öffnen, die App "
@@ -419,11 +428,22 @@ private enum SpotifyWeb {
                                 + "mit Name und E-Mail eintragen.\n\n"
                                 + "Bei einer einzelnen Playlist heißt es meist: sie "
                                 + "gehört jemand anderem – dort darf nur der Besitzer "
-                                + "etwas ändern."
-                        case 401: text = "Die Anmeldung ist abgelaufen. Im Menü einmal trennen und neu verbinden."
-                        case 404: text = "Die Playlist gibt es nicht mehr."
-                        case 429: text = "Zu viele Anfragen an Spotify. Gleich nochmal versuchen."
-                        default:  text = "Spotify antwortete mit Fehler \(status)."
+                                + "etwas ändern.",
+                                "Spotify refuses access (403).\n\n"
+                                + "If this happens for every playlist, your account is "
+                                + "usually missing from the Spotify app: open "
+                                + "developer.spotify.com/dashboard, pick the app, "
+                                + "Settings → User Management, add yourself with name "
+                                + "and e-mail.\n\n"
+                                + "For a single playlist it usually means it belongs to "
+                                + "someone else – only the owner may change it.")
+                        case 401: text = t("Die Anmeldung ist abgelaufen. Im Menü einmal trennen und neu verbinden.",
+                                           "The sign-in has expired. Disconnect and reconnect from the menu.")
+                        case 404: text = t("Die Playlist gibt es nicht mehr.", "That playlist no longer exists.")
+                        case 429: text = t("Zu viele Anfragen an Spotify. Gleich nochmal versuchen.",
+                                           "Too many requests to Spotify. Try again shortly.")
+                        default:  text = t("Spotify antwortete mit Fehler \(status).",
+                                           "Spotify replied with error \(status).")
                         }
                         completion(.failure(SimpleError(text)))
                         return
@@ -464,7 +484,7 @@ private enum SpotifyWeb {
             case .success(let data):
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let items = json["items"] as? [[String: Any]] else {
-                    completion(.failure(SimpleError("Playlists konnten nicht gelesen werden.")))
+                    completion(.failure(SimpleError(t("Playlists konnten nicht gelesen werden.", "Playlists could not be read."))))
                     return
                 }
                 let playlists = items.compactMap { item -> Playlist? in
@@ -527,8 +547,10 @@ private final class CallbackListener {
                 let state = components?.queryItems?.first { $0.name == "state" }?.value
 
                 let page = code != nil
-                    ? "<h2>Fertig.</h2><p>DockTunes ist jetzt mit Spotify verbunden. Dieses Fenster kann geschlossen werden.</p>"
-                    : "<h2>Abgebrochen.</h2><p>Es wurde kein Zugang erteilt.</p>"
+                    ? t("<h2>Fertig.</h2><p>DockTunes ist jetzt mit Spotify verbunden. Dieses Fenster kann geschlossen werden.</p>",
+                        "<h2>Done.</h2><p>DockTunes is now connected to Spotify. You can close this window.</p>")
+                    : t("<h2>Abgebrochen.</h2><p>Es wurde kein Zugang erteilt.</p>",
+                        "<h2>Cancelled.</h2><p>No access was granted.</p>")
                 let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n"
                     + "<html><body style=\"font-family:-apple-system;padding:3em\">" + page + "</body></html>"
                 connection.send(content: response.data(using: .utf8), completion: .contentProcessed { _ in
@@ -632,7 +654,7 @@ private final class PlaylistPicker: NSPanel, NSSearchFieldDelegate {
         container.addSubview(background)
         container.addSubview(shade)
 
-        searchField.placeholderString = "Playlist suchen"
+        searchField.placeholderString = t("Playlist suchen", "Search playlists")
         searchField.font = .systemFont(ofSize: 12)
         searchField.delegate = self
         searchField.frame = NSRect(x: 12, y: container.bounds.height - 38, width: 276, height: 24)
@@ -1466,8 +1488,8 @@ private final class PlayerView: NSView {
         didSet {
             guard repeatMode != oldValue else { return }
             repeatButton.image = Self.symbol(repeatMode == 2 ? "repeat.1" : "repeat",
-                                             repeatMode == 2 ? "Titel einzeln wiederholen"
-                                                             : "Alle wiederholen")
+                                             repeatMode == 2 ? t("Titel einzeln wiederholen", "Repeat one")
+                                                             : t("Alle wiederholen", "Repeat all"))
             repeatButton.alphaValue = repeatMode == 0 ? 0.45 : 1
             needsLayout = true          // "repeat.1" ist breiter als "repeat"
         }
@@ -1576,11 +1598,11 @@ private final class PlayerView: NSView {
         content.addSubview(artistLabel)
 
         for (button, symbol, description) in [
-            (previousButton, "backward.fill", "Vorheriger Titel"),
-            (playButton, "play.fill", "Abspielen"),
-            (nextButton, "forward.fill", "Nächster Titel"),
-            (repeatButton, "repeat", "Alle wiederholen"),
-            (addButton, "plus.circle", "Zur Playlist hinzufügen"),
+            (previousButton, "backward.fill", t("Vorheriger Titel", "Previous track")),
+            (playButton, "play.fill", t("Abspielen", "Play")),
+            (nextButton, "forward.fill", t("Nächster Titel", "Next track")),
+            (repeatButton, "repeat", t("Alle wiederholen", "Repeat all")),
+            (addButton, "plus.circle", t("Zur Playlist hinzufügen", "Add to playlist")),
         ] {
             button.isBordered = false
             button.bezelStyle = .regularSquare
@@ -2528,20 +2550,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        let open = NSMenuItem(title: "Spotify öffnen", action: #selector(openSpotify), keyEquivalent: "")
+        let open = NSMenuItem(title: t("Spotify öffnen", "Open Spotify"), action: #selector(openSpotify), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
         menu.addItem(.separator())
         if SpotifyWeb.isLinked {
-            let choose = NSMenuItem(title: "Zu Playlist hinzufügen …", action: #selector(choosePlaylist), keyEquivalent: "")
+            let choose = NSMenuItem(title: t("Zu Playlist hinzufügen …", "Add to playlist …"), action: #selector(choosePlaylist), keyEquivalent: "")
             choose.target = self
             choose.isEnabled = !track.uri.isEmpty
             menu.addItem(choose)
-            let unlink = NSMenuItem(title: "Spotify-Verbindung trennen", action: #selector(unlinkSpotify), keyEquivalent: "")
+            let unlink = NSMenuItem(title: t("Spotify-Verbindung trennen", "Disconnect from Spotify"), action: #selector(unlinkSpotify), keyEquivalent: "")
             unlink.target = self
             menu.addItem(unlink)
         } else {
-            let link = NSMenuItem(title: "Mit Spotify verbinden …", action: #selector(setUpSpotifyLink), keyEquivalent: "")
+            let link = NSMenuItem(title: t("Mit Spotify verbinden …", "Connect to Spotify …"), action: #selector(setUpSpotifyLink), keyEquivalent: "")
             link.target = self
             menu.addItem(link)
         }
@@ -2551,25 +2573,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // benannte Optionen sind eindeutig.
         let usesSystem = UserDefaults.standard.bool(forKey: "systemVolume")
         let volumeMenu = NSMenu()
-        for (title, wantsSystem) in [("Spotify", false), ("System", true)] {
+        for (title, wantsSystem) in [("Spotify", false), (t("System", "System"), true)] {
             let item = NSMenuItem(title: title, action: #selector(setVolumeSource(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = wantsSystem
             item.state = (usesSystem == wantsSystem) ? .on : .off
             volumeMenu.addItem(item)
         }
-        let volumeItem = NSMenuItem(title: "Scrollen regelt Lautstärke von", action: nil, keyEquivalent: "")
+        let volumeItem = NSMenuItem(title: t("Scrollen regelt Lautstärke von", "Scrolling controls volume of"), action: nil, keyEquivalent: "")
         volumeItem.submenu = volumeMenu
         menu.addItem(volumeItem)
-        let lyricsItem = NSMenuItem(title: "Liedtext mitlaufen lassen", action: #selector(toggleLyrics), keyEquivalent: "")
+        let lyricsItem = NSMenuItem(title: t("Liedtext mitlaufen lassen", "Show live lyrics"), action: #selector(toggleLyrics), keyEquivalent: "")
         lyricsItem.target = self
         lyricsItem.state = lyricsMode ? .on : .off
         menu.addItem(lyricsItem)
         // Die Stufen sind an den Inhalt gekoppelt, nicht rund gewaehlt: jede
         // bringt etwas Sichtbares mehr (siehe README, Abschnitt Breite).
         let steps: [(String, Double)] = lyricsMode
-            ? [("Schmal", 420), ("Normal", 520), ("Breit", 640), ("Sehr breit", 760)]
-            : [("Schmal", 250), ("Normal", 380), ("Breit", 520), ("Sehr breit", 640)]
+            ? [(t("Schmal", "Narrow"), 420), (t("Normal", "Normal"), 520), (t("Breit", "Wide"), 640), (t("Sehr breit", "Very wide"), 760)]
+            : [(t("Schmal", "Narrow"), 250), (t("Normal", "Normal"), 380), (t("Breit", "Wide"), 520), (t("Sehr breit", "Very wide"), 640)]
         let current = UserDefaults.standard.object(forKey: widthKey) as? Double
             ?? (lyricsMode ? 520 : 380)
         let widthMenu = NSMenu()
@@ -2580,20 +2602,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.state = abs(current - value) < 1 ? .on : .off
             widthMenu.addItem(item)
         }
-        let widthItem = NSMenuItem(title: "Breite", action: nil, keyEquivalent: "")
+        let widthItem = NSMenuItem(title: t("Breite", "Width"), action: nil, keyEquivalent: "")
         widthItem.submenu = widthMenu
         menu.addItem(widthItem)
-        let spectrumItem = NSMenuItem(title: "Tonanalyse anzeigen", action: #selector(toggleSpectrum), keyEquivalent: "")
+        let spectrumItem = NSMenuItem(title: t("Tonanalyse anzeigen", "Show audio meter"), action: #selector(toggleSpectrum), keyEquivalent: "")
         spectrumItem.target = self
         spectrumItem.state = spectrumEnabled ? .on : .off
         menu.addItem(spectrumItem)
         menu.addItem(.separator())
-        let login = NSMenuItem(title: "Bei der Anmeldung starten", action: #selector(toggleLoginItem), keyEquivalent: "")
+        let login = NSMenuItem(title: t("Bei der Anmeldung starten", "Start at login"), action: #selector(toggleLoginItem), keyEquivalent: "")
         login.target = self
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "DockTunes beenden", action: #selector(quit), keyEquivalent: "")
+        let quit = NSMenuItem(title: t("DockTunes beenden", "Quit DockTunes"), action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
         return menu
@@ -2608,7 +2630,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Anmeldeobjekt konnte nicht geändert werden"
+            alert.messageText = t("Anmeldeobjekt konnte nicht geändert werden", "Could not change the login item")
             alert.informativeText = error.localizedDescription
             alert.window.level = .floating
             NSApp.activate(ignoringOtherApps: true)
@@ -2676,7 +2698,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func flashAddButton(symbol: String) {
         view.addButton.image = PlayerView.symbol(symbol, "")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
-            self?.view.addButton.image = PlayerView.symbol("plus.circle", "Zur Playlist hinzufügen")
+            self?.view.addButton.image = PlayerView.symbol("plus.circle", t("Zur Playlist hinzufügen", "Add to playlist"))
         }
     }
 
@@ -2694,10 +2716,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             switch result {
             case .failure(let error):
-                self.showError("Playlists konnten nicht geladen werden", error.localizedDescription)
+                self.showError(t("Playlists konnten nicht geladen werden", "Could not load playlists"), error.localizedDescription)
             case .success(let playlists):
                 guard !playlists.isEmpty else {
-                    self.showError("Keine Playlists gefunden", "Dein Konto hat keine bearbeitbaren Playlists.")
+                    self.showError(t("Keine Playlists gefunden", "No playlists found"), t("Dein Konto hat keine bearbeitbaren Playlists.", "Your account has no editable playlists."))
                     return
                 }
                 let picker = PlaylistPicker(playlists: playlists) { [weak self] chosen in
@@ -2727,11 +2749,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.flashAddButton(symbol: "checkmark.circle.fill")
                 // Ein Haken sagt nur "hat geklappt", nicht wohin. Der Name der
                 // Liste steht deshalb kurz in der Unterzeile.
-                self?.flashNotice("Zu \(playlist.name.trimmingCharacters(in: .whitespaces)) hinzugefügt")
+                let name = playlist.name.trimmingCharacters(in: .whitespaces)
+                self?.flashNotice(t("Zu \(name) hinzugefügt", "Added to \(name)"))
             case .failure(let error):
                 self?.flashAddButton(symbol: "exclamationmark.circle.fill")
                 let text = error.localizedDescription
-                self?.showError("Titel konnte nicht hinzugefügt werden", text,
+                self?.showError(t("Titel konnte nicht hinzugefügt werden", "Could not add track"), text,
                                 offerRelink: text.contains("403"))
             }
         }
@@ -2757,17 +2780,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func setUpSpotifyLink() {
         if SpotifyWeb.clientID == nil {
             let alert = NSAlert()
-            alert.messageText = "Einmalige Einrichtung"
-            alert.informativeText = "Zum Einsortieren in Playlists braucht DockTunes eine eigene Client-ID.\n\n"
+            alert.messageText = t("Einmalige Einrichtung", "One-time setup")
+            alert.informativeText = t(
+                "Zum Einsortieren in Playlists braucht DockTunes eine eigene Client-ID.\n\n"
                 + "1. developer.spotify.com/dashboard öffnen und eine App anlegen\n"
                 + "2. Als Redirect URI eintragen: " + SpotifyWeb.redirectURI + "\n"
-                + "3. Client-ID kopieren und hier einsetzen"
+                + "3. Unter Settings → User Management sich selbst eintragen\n"
+                + "4. Client-ID kopieren und hier einsetzen",
+                "To file tracks into playlists DockTunes needs its own client ID.\n\n"
+                + "1. Open developer.spotify.com/dashboard and create an app\n"
+                + "2. Set the redirect URI to: " + SpotifyWeb.redirectURI + "\n"
+                + "3. Under Settings → User Management, add yourself\n"
+                + "4. Copy the client ID and paste it here")
             let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-            field.placeholderString = "Client-ID"
+            field.placeholderString = t("Client-ID", "Client ID")
             alert.accessoryView = field
-            alert.addButton(withTitle: "Weiter")
-            alert.addButton(withTitle: "Dashboard öffnen")
-            alert.addButton(withTitle: "Abbrechen")
+            alert.addButton(withTitle: t("Weiter", "Continue"))
+            alert.addButton(withTitle: t("Dashboard öffnen", "Open dashboard"))
+            alert.addButton(withTitle: t("Abbrechen", "Cancel"))
             alert.window.level = .floating
             NSApp.activate(ignoringOtherApps: true)
             let answer = alert.runModal()
@@ -2806,7 +2836,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Spotify prueft die Freigabe beim Anmelden, nicht bei jedem Aufruf.
         // Wer sich erst danach im Dashboard eintraegt, braucht eine neue
         // Anmeldung – ein Erneuern des Schluessels genuegt nicht (nachgeprueft).
-        if offerRelink { alert.addButton(withTitle: "Neu verbinden …") }
+        if offerRelink { alert.addButton(withTitle: t("Neu verbinden …", "Reconnect …")) }
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertSecondButtonReturn, offerRelink {
             SpotifyWeb.unlink()
@@ -2874,7 +2904,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         updateText()
         view.playButton.image = PlayerView.symbol(track.isPlaying ? "pause.fill" : "play.fill",
-                                                  track.isPlaying ? "Pausieren" : "Abspielen")
+                                                  track.isPlaying ? t("Pausieren", "Pause") : t("Abspielen", "Play"))
         if reloadArtwork && !lyricsMode { loadArtwork(track.artworkURL) }
         updateAnalyzer()
         followDock()
@@ -2944,7 +2974,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard !lyricLines.isEmpty else {
             view.setTexts(title: track.title,
-                          subtitle: lyricsTrackURI.isEmpty ? "" : "kein Liedtext gefunden")
+                          subtitle: lyricsTrackURI.isEmpty ? "" : t("kein Liedtext gefunden", "no lyrics found"))
             return
         }
         let (current, next) = Lyrics.at(displayPosition, in: lyricLines)
@@ -3041,7 +3071,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showVolume(_ level: Int?) {
         if let level {
             view.progressBar.progress = Double(level) / 100
-            view.setTexts(title: view.titleLabel.stringValue, subtitle: "Lautstärke \(level) %")
+            view.setTexts(title: view.titleLabel.stringValue, subtitle: t("Lautstärke \(level) %", "Volume \(level) %"))
             // Spielzeiten passen hier nicht dazu
             view.timeLabel.stringValue = ""
             view.totalLabel.stringValue = ""
@@ -3194,12 +3224,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// "Panel unsichtbar" das Raetselraten.
     private func showAutomationHint() {
         let alert = NSAlert()
-        alert.messageText = "DockTunes darf Spotify nicht steuern"
-        alert.informativeText = "Ohne diese Erlaubnis kennt DockTunes weder Titel noch Wiedergabe und bleibt "
+        alert.messageText = t("DockTunes darf Spotify nicht steuern",
+                              "DockTunes is not allowed to control Spotify")
+        alert.informativeText = t(
+            "Ohne diese Erlaubnis kennt DockTunes weder Titel noch Wiedergabe und bleibt "
             + "unsichtbar.\n\nSystemeinstellungen > Datenschutz & Sicherheit > Automatisierung, "
-            + "dort bei DockTunes den Schalter fuer Spotify einschalten."
-        alert.addButton(withTitle: "Systemeinstellungen oeffnen")
-        alert.addButton(withTitle: "Spaeter")
+            + "dort bei DockTunes den Schalter fuer Spotify einschalten.",
+            "Without it DockTunes knows neither the track nor the playback state and stays "
+            + "invisible.\n\nSystem Settings > Privacy & Security > Automation, "
+            + "then turn on the Spotify switch under DockTunes.")
+        alert.addButton(withTitle: t("Systemeinstellungen oeffnen", "Open System Settings"))
+        alert.addButton(withTitle: t("Spaeter", "Later"))
         alert.window.level = .floating
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn,

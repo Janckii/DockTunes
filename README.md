@@ -1,184 +1,155 @@
+<img src="docs/icon.png" width="96" align="right" alt="Icon">
+
 # DockTunes
 
-Ein Spotify-Panel, das sich neben das Dock legt und ihm folgt – als wäre es
-Teil davon.
+A Spotify panel that sits next to the Dock and follows it — as if it were part
+of it.
 
-<img src="docs/icon.png" width="96" align="right" alt="Symbol">
+*[Deutsche Fassung](README.de.md) — the German version carries the full
+measurement notes.*
 
-![DockTunes neben dem Dock](docs/dock-and-panel.png)
+![DockTunes next to the Dock](docs/dock-and-panel.png)
 
-Zeigt Cover, Titel und Interpret des laufenden Songs, hat Wiedergabetasten,
-eine Zeitleiste mit laufender Zeit, eine Tonanzeige, die auf das echte
-Ausgabesignal reagiert, und kann den Song in eine Playlist legen. Auf Wunsch
-zeigt es statt Cover und Titel den mitlaufenden Liedtext.
+It shows the cover, title and artist of the current track, has transport
+buttons, a progress bar with elapsed and total time, an audio meter that
+reacts to the real output signal, and can file the track into a playlist.
+On request it shows the running lyrics instead of cover and title.
 
-## Voraussetzungen
+The interface follows the system language: German on a German Mac, English
+everywhere else.
 
-- macOS 14.2 oder neuer (Liquid Glass ab macOS 26, sonst eine Rückfallebene)
-- Spotify-Desktop-App
-- Xcode Command Line Tools (`xcode-select --install`) – ein Xcode-Projekt
-  braucht es nicht
+## Requirements
 
-## Bauen und starten
+- macOS 14.2 or newer (Liquid Glass from macOS 26, a fallback below that)
+- The Spotify desktop app
+- Xcode Command Line Tools (`xcode-select --install`) — no Xcode project needed
+
+## Build and run
 
 ```bash
-git clone <repository> DockTunes
+git clone https://github.com/Janckii/DockTunes.git
 cd DockTunes
 bash build.sh
 open -a ~/Applications/DockTunes.app
 ```
 
-`build.sh` übersetzt die Quelldatei, legt das App-Bundle in `~/Applications`
-an und signiert es.
+`build.sh` compiles the single source file, assembles the app bundle in
+`~/Applications` and signs it.
 
-## Berechtigungen
+## Permissions
 
-Beim ersten Start fragt macOS nach zwei Freigaben:
+On first launch macOS asks for two things:
 
-1. **Bedienungshilfen** – nur damit lässt sich auslesen, wo das Dock gerade
-   sitzt. Ohne sie bleibt das Panel unsichtbar. Danach die App einmal neu
-   starten.
-2. **Spotify steuern** – ohne sie kennt DockTunes weder Titel noch Wiedergabe.
+1. **Accessibility** — the only way to read where the Dock currently sits.
+   Without it the panel stays invisible. Restart the app once afterwards.
+2. **Control Spotify** — without it DockTunes knows neither the track nor the
+   playback state.
 
-Für die Tonanzeige kommt beim ersten Abspielen eine dritte Rückfrage
-(Ton mitlesen). Sie wird nur ausgewertet, nichts aufgezeichnet oder gesendet.
-Schaltet man die Tonanzeige ab, entfällt die Frage.
+The audio meter triggers a third prompt on first playback (recording audio).
+It is only analysed; nothing is stored or sent. Turning the meter off avoids
+the prompt entirely.
 
-## Bedienung
+## Using it
 
-| Aktion | Wirkung |
+| Action | Effect |
 |---|---|
-| Klick auf Cover oder Text | Spotify in den Vordergrund holen |
-| Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
-| Pluszeichen | Song in die zuletzt gewählte Playlist legen |
-| Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
-| Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
-| Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie 1,4 s lang an – auch im Liedtext-Modus, dort pausiert der Text so lange |
-| Rechtsklick | Menü mit allen Einstellungen |
+| Click the cover or the text | Bring Spotify to the front |
+| Transport buttons | Previous, play/pause, next |
+| Repeat button | Off → repeat all → repeat one → off |
+| Plus button | Open the playlist picker |
+| Pointer on the panel | Progress bar with elapsed and total time |
+| Drag on the progress bar | Seek within the track |
+| Scroll over the panel | Volume, in steps of 5; the bar shows it briefly |
+| Right-click | Menu with every setting |
 
-## Breite
+## Width
 
-Die Breite ist **fest** und wird nicht vom Titel bestimmt. Eine mitwandernde
-Breite wäre bei jedem Lied eine andere, und das Panel wäre ständig in Bewegung.
+The width is **fixed** and does not follow the title. A width that tracked the
+text would differ for every song and keep the panel in motion.
 
-Eingestellt wird sie im Rechtsklick-Menü unter **Breite**, in vier Stufen
-(normal 250 / 380 / 520 / 640, im Liedtext-Modus 420 / 520 / 640 / 760).
-Die Stufen sind nicht rund gewählt, sondern an den Inhalt gekoppelt: jede
-bringt etwas Sichtbares mehr. Normal- und Liedtext-Modus haben eigene Stufen.
-Zwischenwerte über `panelWidth` und `lyricsWidth`, siehe Einstellungen;
-weniger als 200 Punkte nimmt das Panel nicht an.
+Set it from the right-click menu under **Width**, in four steps (normal
+250 / 380 / 520 / 640, in lyrics mode 420 / 520 / 640 / 760). The steps are not
+round numbers but tied to the content: each one brings something visible.
+In-between values via `panelWidth` and `lyricsWidth`, see Settings; the panel
+refuses anything below 200 points.
 
-**Je breiter, desto mehr steht drin:**
+**The wider it gets, the more it shows:**
 
-| ab | kommt dazu |
+| from | added |
 |---|---|
-| 200 | Cover, Titel, Interpret, Abspielen/Pause, Weiter |
-| 240 | Tonanzeige (wenn im Menü eingeschaltet) |
-| 300 | Zurück |
-| 360 | Playlist-Knopf |
-| 380 | Wiederholen |
-| 520 | Album, und Zeitleiste samt Zeiten dauerhaft statt nur beim Zeigen |
-| 700 | im Liedtext-Modus: die nächste Zeile als Vorschau |
+| 200 | cover, title, artist, play/pause, next |
+| 240 | audio meter (if switched on in the menu) |
+| 300 | previous |
+| 360 | playlist button |
+| 520 | album, plus the progress bar and times permanently instead of on hover |
+| 700 | in lyrics mode: the next line as a preview |
 
-Die Reihenfolge folgt dem Nutzen: **weiter** ist wichtiger als zurück, und
-beides wichtiger als das Plus – im schmalsten Panel steht deshalb die
-Weiter-Taste, nicht der Playlist-Knopf.
+The order follows usefulness: **next** matters more than previous, and both
+more than the plus — so the narrowest panel carries the next button, not the
+playlist one.
 
-Der **Wiederholen-Knopf** steht ab der Normalgröße und schaltet in drei
-Stufen weiter:
+**If the title does not fit, it scrolls** — endlessly, at 20 points per second
+with 40 points between passes. Each pass starts with 2.5 seconds of stillness
+so the beginning can be read. Title only; the artist is still truncated, and in
+lyrics mode the line wraps instead of scrolling.
 
-| Klick | Zustand | Symbol |
-|---|---|---|
-| – | aus | gedimmt |
-| 1× | alle wiederholen | hell |
-| 2× | **einzeln** wiederholen | hell, mit der 1 im Symbol |
-| 3× | wieder aus | gedimmt |
+## Lyrics
 
-Aus wird gedimmt gezeigt statt ausgeblendet – so bleibt sichtbar, dass es die
-Wahl gibt. Der Knopf nimmt dem Titel 38 Punkte weg; bei der Normalgröße
-bleiben dem Text rund 120, und was nicht hineinpasst, läuft durch.
+Switch it on from the right-click menu. Instead of cover and title the panel
+then shows the running line of the song.
 
-Die **Tonanzeige** läuft auch im schmalen Panel. Ob sie überhaupt erscheint,
-entscheidet der Schalter im Rechtsklick-Menü; sie weicht nur, wenn dem Titel
-sonst weniger als 70 Punkte blieben – der Text wäre dort nur noch ein hastig
-laufender Schnipsel. Die Schwelle hängt an der Panelbreite und daran, welche
-Knöpfe stehen, **nicht** am Titel: sonst ginge die Anzeige bei jedem Lied an
-und aus.
+Only the **current** line is shown, wrapped across two lines when it does not
+fit on one. A dimmed preview of the next line would cost the running line its
+room; above 700 points of width it comes back, where it takes nothing away.
+If two lines are not enough the text is visibly truncated rather than silently
+cut.
 
-**Passt der Titel nicht, läuft er durch** – endlos, mit 20 Punkten je Sekunde
-und 40 Punkten Abstand zwischen den Durchläufen. Jeder Durchlauf beginnt mit
-2,5 Sekunden Stillstand, damit sich der Anfang lesen lässt. Nur der Titel; der
-Interpret wird weiterhin gekürzt, und im Liedtext-Modus bricht die Zeile um
-statt zu wandern.
+A new line eases in and fades up over 260 ms — otherwise the text simply stands
+there differently and the change goes unnoticed. Before the first line and
+during instrumental passages the title and artist stand there instead of an
+empty surface.
 
-Normal- und Liedtext-Modus merken sich ihre Breite getrennt – der Liedtext
-braucht mehr Platz als Cover, Titel und Knöpfe.
+Lyrics come from [lrclib.net](https://lrclib.net), an open directory with no
+sign-up. Title and artist of the current track go there — nothing else.
 
-## Liedtext
+A version is only accepted when the **duration** (within 4 seconds) **and** the
+artist match. Both as conditions, not merely as a ranking — otherwise a
+same-named piece by a different artist ends up in the panel. If nothing
+matches, title and artist stay.
 
-Im Rechtsklick-Menü einschaltbar. Statt Cover und Titel zeigt das Panel dann
-die laufende Textzeile und darunter die nächste.
-
-Es steht immer nur die **laufende** Zeile da, dafür über zwei Zeilen, wenn sie
-nicht auf eine passt. Die abgeschwächte Vorschau auf die nächste Zeile ist
-entfallen: lange Zeilen wurden dadurch abgeschnitten, und das Kommende ist
-weniger wert als das Laufende vollständig. Reichen zwei Zeilen nicht, wird
-sichtbar gekürzt statt stillschweigend abgeschnitten.
-
-Beim Zeilenwechsel steigt die neue Zeile ein und blendet auf (260 ms) – sonst
-steht der Text plötzlich anders da und der Wechsel geht unter.
-
-Vor der ersten Zeile und in Instrumentalpausen stehen Titel und Interpret
-statt einer leeren Fläche.
-
-Ab 700 Punkten Breite steht die nächste Zeile wieder darunter – dort nimmt sie
-der laufenden nichts weg. Die Breite lässt sich ziehen oder im Rechtsklick-Menü
-in vier Stufen wählen.
-
-Die Texte kommen von [lrclib.net](https://lrclib.net), einem offenen
-Verzeichnis ohne Anmeldung. Dorthin gehen Titel und Interpret des laufenden
-Songs – sonst nichts.
-
-Die Zeitmarken sind **zeilenweise**, nicht wortweise – ein Karaoke-Modus mit
-mitwanderndem Wort ließe sich daraus nur schätzen. Siehe „Was nicht geht".
-
-Eine Fassung wird nur übernommen, wenn Laufzeit (auf 4 Sekunden genau) **und**
-Interpret passen. Beides als Bedingung, nicht nur als Reihung – sonst landet
-ein gleichnamiges Stück eines anderen Künstlers im Panel. Passt keine Fassung,
-bleibt es bei Titel und Interpret.
+The timestamps are **per line, not per word** — a karaoke mode with a
+travelling word could only be guessed from them. See "What does not work".
 
 ## Playlists
 
-Der Knopf mit dem Pluszeichen öffnet die Auswahl – immer, nicht nur beim ersten
-Mal. Eine gemerkte Standardliste gibt es bewusst nicht: ohne Auswahl weiß
-niemand, wohin der Titel wandert, und die zuletzt benutzte ist selten die
-gewollte. Nach dem Hinzufügen steht der Name der Liste kurz in der Unterzeile. Die Auswahl ist ein eigenes Fenster mit Suchfeld; Playlists lassen
-sich über den Stern zu Favoriten machen, die dann oben stehen. Gezeigt werden
-nur Playlists, in die sich auch schreiben lässt – `me/playlists` liefert auch
-alle gefolgten zurück, und dort antwortet Spotify beim Hinzufügen mit 403.
-(An einem echten Konto gemessen: 12 von 23 Einträgen waren fremd.)
+The plus button opens the picker — always, not just the first time. There is
+deliberately no remembered default: without a choice nobody knows where the
+track goes, and the last one used is rarely the one wanted. After adding, the
+name of the list stands in the subtitle for a moment.
 
-Das geht nicht über AppleScript – Spotify kennt dafür keinen Befehl – sondern
-über Spotifys Web-Schnittstelle. Sie verlangt eine einmalige Einrichtung:
+Only playlists you can actually write to are offered. `me/playlists` also
+returns every playlist you merely follow, and Spotify answers a write there
+with 403. (Measured on a real account: 12 of 23 entries were other people's.)
 
-1. Auf [developer.spotify.com](https://developer.spotify.com/dashboard) eine
-   App anlegen (kostenlos)
-2. Als Redirect URI genau `http://127.0.0.1:8888/callback` eintragen
-3. **Settings → User Management → sich selbst eintragen**, mit Namen und der
-   E-Mail des eigenen Spotify-Kontos
-4. Client-ID kopieren und beim ersten Klick auf das Pluszeichen einsetzen
+This does not work over AppleScript — Spotify has no command for it — but over
+Spotify's web API. That needs a one-time setup:
 
-Schritt 3 ist leicht zu übersehen und eine mögliche Ursache für
-„Titel konnte nicht hinzugefügt werden – Fehler 403".
+1. Create an app on [developer.spotify.com](https://developer.spotify.com/dashboard) (free)
+2. Set the redirect URI to exactly `http://127.0.0.1:8888/callback`
+3. **Settings → User Management → add yourself**, with your name and the
+   e-mail of your Spotify account
+4. Copy the client ID and paste it on the first click of the plus button
 
-## Der Pfad heißt `/items`, nicht `/tracks`
+Step 3 is easy to miss and one possible cause of "Could not add track – error
+403".
 
-Ein 403 beim Hinzufügen hat noch eine zweite, viel unauffälligere Ursache, und
-die hat hier Stunden gekostet: **Spotify weist den dokumentierten Pfad
-`/playlists/{id}/tracks` inzwischen mit 403 ab.** Der Nachfolger `/items`
-antwortet normal – gleicher Zugang, gleiche Playlist, gleicher Rumpf:
+### The path is `/items`, not `/tracks`
 
-| Aufruf | |
+A 403 when adding has a second, far less obvious cause, and it cost hours here:
+**Spotify now refuses the documented path `/playlists/{id}/tracks` with 403.**
+Its successor `/items` answers normally — same token, same playlist, same body:
+
+| Call | |
 |---|---|
 | `GET /me` | 200 |
 | `GET /me/playlists` | 200 |
@@ -189,337 +160,92 @@ antwortet normal – gleicher Zugang, gleiche Playlist, gleicher Rumpf:
 | `GET /playlists/{id}/items` | **200** |
 | `POST /playlists/{id}/items` | **201** |
 
-Weil alles andere normal antwortete, sah der Fehler nach einer fehlenden
-Berechtigung aus – die Berechtigungen waren aber korrekt erteilt (Spotify
-selbst nennt sie beim Erneuern des Zugangs), die Playlist war die eigene, und
-auch eine ganz frische Anmeldung änderte nichts.
+Because everything else answered normally the error looked like a missing
+permission — but the permissions were granted correctly (Spotify itself names
+them when the token is refreshed), the playlist was the user's own, and even a
+completely fresh sign-in changed nothing.
 
-Beim Entfernen ist der Rumpf ebenfalls anders: `{"items": [{"uri": …}]}`
-statt `{"tracks": […]}`.
+Removing has a different body too: `{"items": [{"uri": …}]}` instead of
+`{"tracks": […]}`.
 
-Angemeldet wird per PKCE, es liegt also kein Geheimnis in der App. Die
-Zugangsdaten landen in `~/Library/Application Support/DockTunes/credentials.json`
-mit Rechten 0600.
+Sign-in uses PKCE, so no secret lives in the app. The credentials land in
+`~/Library/Application Support/DockTunes/credentials.json` with mode 0600.
 
-Die Datei wird bewusst **ohne** `.completeFileProtection` geschrieben. Diese
-Schutzklasse stammt aus der iOS-Welt und macht die Datei auf macOS unlesbar –
-nachgemessen wurde sie danach selbst für die App und für den Eigentümer mit
-„Operation not permitted" abgewiesen, obwohl die Rechte 0600 lauteten. Der
-Schutz sind hier die Dateirechte.
+The file is deliberately written **without** `.completeFileProtection`. That
+protection class comes from the iOS world and makes the file unreadable on
+macOS — measured, it was then refused with "Operation not permitted" even for
+the app itself and for the owner, although the mode was 0600. The protection
+here is the file permissions.
 
-## Einstellungen
+## Settings
 
-Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
+Everything from the right-click menu. In addition, via `defaults`:
 
 ```bash
-defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
-defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
-defaults write de.jancko.docktunes rimAlpha -float 0.30   # Stärke der Lichtkante
-defaults write de.jancko.docktunes shadowStrength -float 0.6 # Schatten, 0 = aus
-defaults write de.jancko.docktunes panelWidth -float 460  # Breite, normal (ab 200)
-defaults write de.jancko.docktunes lyricsWidth -float 580 # Breite im Liedtext-Modus
+defaults write de.jancko.docktunes volumeStep -int 2      # volume per notch (default 5)
+defaults write de.jancko.docktunes followRate -int 30     # dock polls per second
+defaults write de.jancko.docktunes rimAlpha -float 0.30   # strength of the light rim
+defaults write de.jancko.docktunes shadowStrength -float 0.6  # shadows, 0 = off
+defaults write de.jancko.docktunes panelWidth -float 460  # width, normal (from 200)
+defaults write de.jancko.docktunes lyricsWidth -float 580 # width in lyrics mode
 ```
 
----
+## What does not work
 
-# Technische Notizen
+**Karaoke with a travelling word.** That needs per-word timestamps. lrclib only
+delivers them per line — checked across several tracks, not a single word mark.
+Word-accurate data exists at Musixmatch, Apple Music and Spotify itself, all
+three only behind paid or non-public interfaces.
 
-Die folgenden Abschnitte dokumentieren Entscheidungen, die beim Nachbauen sonst
-wie Willkür wirken. Alle Zahlen sind nachgemessen, nicht geschätzt.
+It could be guessed (spread the line duration across the words, weighted by
+length), but singing is not evenly paced: on held notes and pauses inside a
+line the marker visibly runs beside the voice. That would look like karaoke
+without being it.
 
-## Verhalten
+What would be honest: a bar that travels once from left to right through the
+line over its duration. It is exact at both ends and claims nothing about
+individual words in between.
 
-Das Panel folgt der Position des Docks:
+**Dragging the width with the mouse, like a window.** Tried and removed again.
+The dragging itself worked (a real but invisible window frame: `.titled` with
+`.resizable`, plus `canBecomeKey` and an overridden `constrainFrameRect` —
+macOS otherwise pushes framed windows 50 points out of the Dock area). But the
+pointer never changed to the resize cursor at the edge, and without that the
+hint that you can drag there is missing.
 
-- Abgefragt wird 60-mal je Sekunde, solange der Zeiger beim Dock ist – nur dann
-  ändert sich dessen Größe (Vergrößerung, Ein- und Ausfahren). Sonst fünfmal.
-  Nachgemessen: die Lücke zwischen Dock und Panel bleibt während der
-  Vergrößerung konstant. Einstellbar mit
-  `defaults write de.jancko.docktunes followRate -int 30`.
-- Es sitzt immer rechts neben dem Dock, exakt in dessen Höhe. Das sichtbare
-  Dock-Glas liegt 5 Punkte tiefer als die Symbolliste, die die Bedienungshilfen
-  melden – dieser Versatz ist eingerechnet und bei Dock-Größe 35, 50 und 70
-  nachgemessen. Passt das Panel rechts nicht hin, weicht es nach links aus.
-- Bewegungen laufen weich aus (rund 80 ms), größere Sprünge werden sofort
-  gesetzt, damit ein Bildschirmwechsel nicht über den Schreibtisch fliegt.
-- Die Füllung ist gegen den Dock ausgemessen, nicht geschätzt. Der Dock mischt
-  streng linear – Helligkeit = 0,660 · Grund + 58 im Hell-, 0,720 · Grund + 17
-  im Dunkelmodus, über Prüfflächen von Schwarz bis Weiß ohne Abweichung.
-  Liquid Glass tut das nicht: es hellt sich über halbheller Fläche selbsttätig
-  auf und kippt über sehr heller ins Dunkle. Wie das Panel den Dock trotzdem
-  trifft, steht im Quelltext bei `applyFill`. Größte verbleibende Abweichung:
-  4 von 255 Stufen im Hell-, 6 im Dunkelmodus.
-- Die helle Kante läuft oben **und** unten, je einen Punkt, an den Seiten nur
-  angedeutet – so wie beim Dock (gemessen 140 gegen 88 Fläche). Trifft auf
-  0,5 Stufen. Feinjustage: `defaults write de.jancko.docktunes rimAlpha -float 0.30`.
-- Kein Schlagschatten. Der Dock wirft keinen: der Grund neben ihm misst exakt
-  den Wert des Hintergrunds. Mit Schatten saß das Panel sichtbar *auf* dem
-  Bild statt darin.
-- **Schatten hinter Text und Knöpfen.** Nicht Zierde, sondern das, was die
-  Lesbarkeit trägt: über einem hellen Fenster hinter dem Dock steht weißer Text
-  auf einer Fläche von 221 – gemessene **34 Stufen** Eigenkontrast, das reicht
-  nicht. Der Schatten legt dort 60 Stufen dazu. Über einem dunklen
-  Schreibtischbild ist er dagegen kaum zu sehen (Fläche 82, Halo 23).
-  Die Stärke lag früher bei 1,0, was über dunklem Grund unnötig prägnant war;
-  jetzt 0,6. Alles zusammen einstellbar:
-  `defaults write de.jancko.docktunes shadowStrength -float 0` schaltet sie ab.
-  Die Zeitangaben hatten als einzige gar keinen – sie haben jetzt denselben.
-- Die Textfarbe hängt bewusst **nicht** am Systemmodus: Wie hell die Panelfläche
-  ist, bestimmt der Hintergrund dahinter (gemessen 0,21 über Schwarz bis 0,88
-  über Weiß), nicht Hell- oder Dunkelmodus. Heller Text mit Schatten trägt auf
-  beidem. Über einem sehr hellen Fenster direkt hinter dem Dock bleibt er
-  grenzwertig – ein Kompromiss zugunsten der Dock-Optik.
-- Es wächst und wandert mit, wenn sich die Dock-Breite ändert.
-- Verschwindet das Dock (Vollbild, automatisches Ausblenden), verschwindet das
-  Panel mit. **Beim Wechsel zwischen Bildschirmen aber nicht**: der Dock meldet
-  dabei kurz ein Rechteck, das auf keinen Bildschirm passt (nachgelesen im
-  Protokoll: `779,-51`, `3019,97`, `774,-36`). Früher wurde das Panel deshalb
-  aus- und einen Wimpernschlag später wieder eingeblendet – das war das kurze
-  Aufblitzen. Jetzt bleibt es stehen, bis der Dock wieder auf einem Schirm
-  sitzt. Nachgemessen an einer Bildschirmaufnahme über gleichmäßigem Grund:
-  die Fläche springt von 71 (Hintergrund) unmittelbar auf ihren Endwert 106,7
-  und bleibt dort, ohne ein einziges helleres Bild dazwischen.
-- Es ist auf allen Schreibtischen sichtbar und liegt auf derselben
-  Fensterebene wie das Dock.
-- Ohne laufendes Spotify oder ohne geladenen Titel bleibt es unsichtbar.
+Eight attempts at the cursor, all without effect: `NSCursor.set()`, `push()`,
+re-applied ten times a second, for the whole panel surface, via a
+`.cursorUpdate` zone, via a `.mouseMoved` zone, on `.floating` instead of Dock
+level, and with the app activated. The cursor is granted by the active
+application, and DockTunes never activates — clicks on the panel must not steal
+focus. `mouseEntered` still reaches a window without focus, `mouseMoved` and
+`cursorUpdate` no longer do.
 
-Klicks auf das Panel holen die App nicht in den Vordergrund – das Fenster, in
-dem gerade gearbeitet wird, behält den Fokus.
+The four steps in the menu do the same with less fuss.
 
-## Rechenzeit
+## Contributing
 
-Gemessen mit `top -l 5` auf einem Kern. (`ps -o %cpu` taugt hier nicht – das
-ist der Durchschnitt über die ganze Laufzeit, nicht der aktuelle Wert.)
+Everything sits in one file, `DockTunes.swift`. No Xcode project, no package
+manager — `bash build.sh` is enough. **Source code and comments are in
+German**; the user interface is bilingual.
 
-| Zustand | ganz früher | zwischendurch | jetzt |
-|---|---|---|---|
-| pausiert, Zeiger woanders | 4,0 % | 1,2 % | **1,0 %** |
-| spielt, Zeiger woanders | 7,6 % | 2,8 % | **2,0 %** |
-| spielt, Zeiger auf dem Panel | 9,3 % | 4,6 % | **3,6 %** |
-| Liedtext-Modus, spielt | – | 2,8 % | **2,5 %** |
-| Titel läuft durch | – | +1,5 % | **kaum messbar** |
+The icon ships as `icon/DockTunes.icns` and is drawn by `icon/icon.swift` — a
+small program, no graphics application needed:
+`swiftc -O -o icongen icon/icon.swift && ./icongen icon.png`, then `iconutil`
+for the `.icns`.
 
-Woher die Ersparnis kommt:
+Two things that matter when building on this:
 
-- **Zeichnen im Glas ist teuer.** Jedes `draw(_:)` in einer
-  `NSGlassEffectView` lässt die ganze Fläche neu mischen – gemessen 1,7 ms je
-  Durchlauf. Die Tonanzeige tat das 30-mal je Sekunde, die Zeitleiste 10-mal.
-  Beide bestehen jetzt aus `CALayer`n: nur noch Höhe und Deckkraft setzen,
-  den Rest macht der Compositor. Das allein waren knapp 5 Prozentpunkte.
-- **Die Dock-Abfrage läuft nur, wenn sie etwas erfahren kann.** Der Dock
-  ändert seine Größe nur, wenn der Zeiger bei ihm ist (Vergrößerung) oder er
-  ein- und ausfährt. Sonst genügen fünf Blicke je Sekunde statt sechzig. Die
-  Zeigerposition abzufragen kostet nichts, die Bedienungshilfen 0,06 ms – bei
-  60 Hz sind das 2 % Dauerlast.
-- **Unsichtbares wird nicht gerechnet.** Zeitleiste und Zeiten erscheinen erst
-  beim Hovern; ohne Zeiger auf dem Panel läuft der Takt gar nicht. Die Leiste
-  wird nur neu gesetzt, wenn sie sich um mindestens einen Punkt bewegt – bei
-  drei Minuten Spielzeit ist das etwa alle anderthalb Sekunden statt zehnmal
-  je Sekunde.
-- **Text nur bei echter Änderung.** Im Liedtext-Modus lief `setTexts` zehnmal
-  je Sekunde und baute jedes Mal zwei Attributtexte samt Schatten neu auf,
-  obwohl die Zeile alle paar Sekunden wechselt.
-- **Der Abfragetakt richtet sich nach dem Zustand.** Ein Abruf über AppleScript
-  kostet 55 ms. Während der Wiedergabe alle 5 Sekunden, bei Pause alle 20 –
-  da bewegt sich nichts, und einen echten Wechsel meldet Spotify von selbst.
-- **Feste Puffer in der Tonanalyse** statt vier neuer Anlagen je Durchlauf, und
-  der Ringspeicher wird blockweise kopiert statt Wert für Wert mit Modulo.
-- **Der Dock-Prozess wird nicht mehr gesucht.** Ihn alle zwei Sekunden in der
-  Prozessliste zu finden war im Leerlauf der größte verbliebene Posten – eine
-  Stichprobe zeigte den Löwenanteil der Ruhelast genau dort. Er wechselt aber
-  praktisch nie; jetzt wird er behalten und erst verworfen, wenn die Abfrage
-  fehlschlägt, also nach einem Neustart des Docks.
-- **Die Tonanzeige setzt je Bild nur noch Höhe und Deckkraft.** Farbe und
-  Eckenrundung hängen nicht am Pegel und wurden trotzdem dreißigmal je Sekunde
-  neu gesetzt – jede Farbe kostete dabei ein neues `CGColor`, siebenmal je
-  Bild.
-- **Der Lauftext hält zwischen den Durchläufen an.** Solange sich nichts
-  bewegt, muss die Glasfläche auch nicht neu gemischt werden. Zusammen mit dem
-  langsameren Lauf ist er aus der Messung praktisch verschwunden.
+- **Measured, not estimated.** Nearly every number in the source (spacings,
+  brightnesses, rim strengths) is there because it was measured, and the
+  comment beside it says against what. Anyone changing them should measure
+  again — a screenshot and a few lines of pixel comparison are enough.
+- **One private system key.** To match the Dock's fill, `PlayerView.tune` sets
+  the glass variant via `_variant`. The public steps of `NSGlassEffectView` do
+  not blend linearly and therefore only fit one single backdrop. The call is
+  guarded with `responds(to:)`: if the key disappears in a future macOS the app
+  keeps running, the colour just no longer sits exactly.
 
-Frühere Runde: der Dock-Prozess wird nur alle zwei Sekunden gesucht (die
-Prozessliste zu durchsuchen kostete 0,2 ms je Takt), und hat sich die
-Dock-Geometrie nicht geändert, bricht der Durchlauf sofort ab. Das brachte
-21 % auf 4 %.
+## Licence
 
-## Maßraster
-
-Alle Abstände im Panel folgen zwei Werten: 8 Punkte nach außen, 10 Punkte
-zwischen den Elementen (Knöpfe untereinander 4).
-
-Die Panelbreite richtet sich nach dem Inhalt. Bei fester Breite entstand
-zwischen Titel und Tonanzeige eine Lücke, die je nach Titellänge anders ausfiel –
-die Abstände waren damit nicht gesetzt, sondern zufällig.
-
-Die Zeitleiste zeigt links die laufende, rechts die gesamte Spielzeit – beide
-mit fester Breite, damit die Leiste beim Ticken nicht wandert.
-
-## Abstände im Panel, nachgemessen
-
-| Strecke | Wert |
-|---|---|
-| Cover → Titel | 12 px |
-| Titel → Tonanzeige | 11–12 px |
-| Tonanzeige → erster Knopf | 12 px |
-| Knopf → Knopf | 12 px |
-
-Die Knöpfe sitzen **nicht** in gleich breiten Rahmen. Ihre Symbole sind
-unterschiedlich breit (24, 13, 24 und 18 px) und tragen zudem ungleiche Ränder –
-der Zurück-Pfeil etwa 0 px links und 2 px rechts. Gleiche Rahmen ergeben damit
-sichtbar ungleiche Abstände (gemessen 13, 12 und 8 px). Die App misst deshalb
-beim Start die tatsächlich bemalte Fläche jedes Symbols und richtet die Rahmen
-daran aus; die verbleibenden ein bis zwei Punkte sind als Festwerte im Code
-ausgeglichen und dort begründet.
-
-Gemessen wird mit zwei Schwellen: Bei voller Deckung liegen alle
-Knopfabstände auf 12 px, zählt man die weichen Antialiasing-Ränder mit, streuen
-sie um einen Punkt. Enger geht es auf einem Punktraster nicht.
-
-## Zeitleiste, nachgemessen
-
-| Strecke | Wert |
-|---|---|
-| laufende Zeit → Leiste | 8 px |
-| Leiste → Gesamtzeit | 8 px |
-| Gesamtzeit → Panelrand | 11 px |
-
-Die Zeitfelder bekommen beide die Breite des breiteren Textes; feste Felder
-ließen dort Luft, wo der Text schmaler war, und rückten die Leiste sichtbar aus
-der Mitte. Die linke Zeit ist rechtsbündig, damit sie an der Leiste anliegt.
-
-Ziffern tragen unterschiedlich viel Tinte an ihren Rändern – gleiche gesetzte
-Abstände wirken deshalb um einen Punkt ungleich. Der rechte Abstand ist um
-diesen Punkt korrigiert; nachgeprüft bei 0:15, 0:49, 1:15 und 1:43, überall
-8 zu 8 Pixel.
-
-Der Strich sitzt mittig in seinem Feld, damit er auf einer Linie mit den Zeiten
-liegt statt darüber zu schweben.
-
-## Liedtext-Modus, nachgemessen
-
-Dieselben Werte wie im normalen Modus:
-
-| Strecke | Wert |
-|---|---|
-| laufende Zeit → Leiste | 8 px |
-| Leiste → Gesamtzeit | 8 px |
-| Panelrand → laufende Zeit | 11 px |
-| Gesamtzeit → Panelrand | 11 px |
-| Tonanzeige → erster Knopf | 12 px |
-| Knopf → Knopf | 12 px |
-
-Play und Pause sind unterschiedlich geformt und brauchen je einen eigenen
-Feinversatz – mit einem gemeinsamen Wert lag der Abstand beim Pause-Zeichen um
-einen Punkt daneben.
-
-## Signatur
-
-`build.sh` signiert ad-hoc, wenn kein eigenes Zertifikat da ist. Das genügt zum
-Ausprobieren, hat aber einen Haken: Eine Ad-hoc-Signatur bekommt bei jedem Bauen
-eine neue Kennung, und macOS verlangt danach jedes Mal die Freigaben von vorn.
-
-Wer öfter baut, legt sich einmalig ein eigenes selbstsigniertes Zertifikat mit
-dem Namen `Jancko DockTunes Signing` im Schlüsselbund an (Schlüsselbundverwaltung
-→ Zertifikatsassistent → Zertifikat erstellen, Art „Codesignatur"). `build.sh`
-findet es dann von selbst, die Kennung bleibt stabil und die Freigaben halten.
-
-Ein Zertifikat liegt aus naheliegenden Gründen nicht im Repository.
-
-## Fehlersuche
-
-Die App schreibt ihren Zustand nach `/tmp/docktunes-status.txt` – dort steht
-sofort, ob eine Freigabe fehlt, Spotify stumm bleibt oder das Dock nicht
-gefunden wird.
-
-## Einzeltitel wiederholen, selbst gemacht
-
-„Alle wiederholen" ist Spotifys eigene Einstellung. **„Einzeln" kennt Spotify
-über AppleScript nicht** – die Eigenschaft `repeating` ist ein bloßes Ja/Nein,
-nachgesehen im Wörterbuch der App. Über die Web-Schnittstelle ginge es
-(`state=track`), das verlangte aber eine zusätzliche Berechtigung, eine neue
-Anmeldung und Spotify Premium.
-
-Deshalb macht das Panel es selbst: **0,6 Sekunden vor Schluss zurück auf
-Anfang.** Der Abstand ist mit Absicht großzügig – die Position wird zwischen
-den Abrufen hochgerechnet, und zu spät wäre der nächste Titel schon dran.
-Nachgemessen an einem Stück von 155,4 Sekunden: Sprung bei 154,5 zurück auf
-1,1, selber Titel.
-
-Zwei Dinge, die man dazu wissen sollte:
-
-- Spotifys eigene Oberfläche zeigt diesen Zustand **nicht** an, sie weiß nichts
-  davon. Der Zustand steht in den Einstellungen (`repeatOne`) und übersteht
-  einen Neustart.
-- Die letzten 0,6 Sekunden des Stücks fallen weg. Bei einem ausklingenden
-  Schluss ist das zu hören.
-
-## Was nicht geht
-
-**Karaoke mit mitwanderndem Wort.** Dafür bräuchte es Zeitmarken je Wort.
-lrclib liefert nur je Zeile – über mehrere Titel geprüft, keine einzige
-Wortmarke. Wortgenaue Daten haben Musixmatch, Apple Music und Spotify selbst,
-alle drei nur über bezahlte oder nicht öffentliche Schnittstellen.
-
-Schätzen ließe es sich (Zeilendauer auf die Wörter verteilen, nach Länge
-gewichtet), aber gesungen wird nicht gleichmäßig: bei gehaltenen Tönen und
-Pausen mitten in der Zeile läuft die Markierung sichtbar falsch. Das sähe nach
-Karaoke aus, ohne es zu sein.
-
-Was ehrlich ginge: ein Balken, der in der Zeilendauer einmal von links nach
-rechts durch die Zeile läuft. Der stimmt an beiden Enden genau und behauptet
-dazwischen nichts über einzelne Wörter.
-
-**Die Breite mit der Maus ziehen, wie bei einem Fenster.** Probiert und wieder
-ausgebaut. Das Ziehen selbst ließ sich hinbekommen (ein echter, unsichtbar
-gemachter Fensterrahmen: `.titled` mit `.resizable`, dazu `canBecomeKey` und
-ein überschriebenes `constrainFrameRect` – macOS schiebt Fenster mit Rahmen
-sonst um 50 Punkte aus dem Dock-Bereich). Nur der Mauszeiger wechselte an der
-Kante nie auf das Größensymbol, und ohne das fehlt der Hinweis, dass man dort
-ziehen kann.
-
-Acht Anläufe für den Zeiger, alle wirkungslos: `NSCursor.set()`, `push()`,
-zehnmal je Sekunde nachgesetzt, für die ganze Panelfläche, per
-`.cursorUpdate`-Zone, per `.mouseMoved`-Zone, auf `.floating` statt Dock-Ebene,
-und mit aktivierter App. Den Zeiger vergibt die aktive Anwendung, und DockTunes
-aktiviert sich nie – Klicks aufs Panel sollen den Fokus nicht stehlen.
-`mouseEntered` erreicht ein Fenster ohne Fokus noch, `mouseMoved` und
-`cursorUpdate` nicht mehr.
-
-Die vier Stufen im Menü tun dasselbe mit weniger Umstand.
-
-## Lauftext, warum als Bild
-
-Der durchlaufende Titel ist **ein** Bild mit zwei Abzügen des Textes, das eine
-`CALayer` schiebt. Zwei Textfelder nebeneinander wären naheliegender und waren
-der erste Versuch – AppKit zeichnet eine Ansicht aber nicht, solange sie
-außerhalb des Ausschnitts liegt. Die zweite Kopie blieb dadurch leer, und
-zwischen den Durchläufen klaffte eine Lücke von mehreren Sekunden
-(nachgemessen: 7 von 10,6 Sekunden Umlauf). `wantsLayer` auf den Textfeldern
-half nicht.
-
-## Mitmachen
-
-Alles steckt in einer Datei, `DockTunes.swift`. Das Symbol liegt als
-`icon/DockTunes.icns` bei und wird von `icon/icon.swift` gezeichnet – ein
-kleines Programm, kein Grafikprogramm nötig:
-`swiftc -O -o icongen icon/icon.swift && ./icongen icon.png`, dann über
-`iconutil` zum `.icns`. Kein Xcode-Projekt, kein
-Paketmanager – `bash build.sh` genügt. Quelltext und Kommentare sind auf
-Deutsch.
-
-Zwei Dinge, die beim Weiterbauen wichtig sind:
-
-- **Gemessen statt geschätzt.** Fast jede Zahl im Quelltext (Abstände,
-  Helligkeiten, Kantenstärken) steht dort, weil sie nachgemessen wurde, und der
-  Kommentar daneben sagt, woran. Wer sie ändert, sollte neu messen – ein
-  Bildschirmfoto und ein paar Zeilen Pixelvergleich reichen.
-- **Ein privater Systemschlüssel.** Um die Füllung des Docks zu treffen, setzt
-  `PlayerView.tune` die Glasvariante über `_variant`. Die öffentlichen Stufen
-  von `NSGlassEffectView` mischen nicht linear und passen deshalb nur für genau
-  einen Hintergrund. Der Aufruf ist mit `responds(to:)` abgesichert: fällt der
-  Schlüssel in einer künftigen macOS-Fassung weg, läuft die App weiter, die
-  Farbe sitzt dann nur nicht mehr genau.
-
-## Lizenz
-
-Siehe [LICENSE](LICENSE).
+See [LICENSE](LICENSE).
