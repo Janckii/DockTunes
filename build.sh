@@ -21,6 +21,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleDisplayName</key>       <string>DockTunes</string>
     <key>CFBundleIdentifier</key>        <string>de.jancko.docktunes</string>
     <key>CFBundleExecutable</key>        <string>DockTunes</string>
+    <key>CFBundleIconFile</key>          <string>DockTunes</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key>           <string>1</string>
@@ -34,6 +35,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+echo "→ Symbol einlegen"
+cp "$SRC_DIR/icon/DockTunes.icns" "$APP/Contents/Resources/DockTunes.icns"
 
 echo "→ Kompilieren"
 swiftc -O -parse-as-library -target arm64-apple-macos14.2 \

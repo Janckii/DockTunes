@@ -3,6 +3,8 @@
 Ein Spotify-Panel, das sich neben das Dock legt und ihm folgt – als wäre es
 Teil davon.
 
+<img src="docs/icon.png" width="96" align="right" alt="Symbol">
+
 ![DockTunes neben dem Dock](docs/dock-and-panel.png)
 
 Zeigt Cover, Titel und Interpret des laufenden Songs, hat Wiedergabetasten,
@@ -497,7 +499,11 @@ half nicht.
 
 ## Mitmachen
 
-Alles steckt in einer Datei, `DockTunes.swift`. Kein Xcode-Projekt, kein
+Alles steckt in einer Datei, `DockTunes.swift`. Das Symbol liegt als
+`icon/DockTunes.icns` bei und wird von `icon/icon.swift` gezeichnet – ein
+kleines Programm, kein Grafikprogramm nötig:
+`swiftc -O -o icongen icon/icon.swift && ./icongen icon.png`, dann über
+`iconutil` zum `.icns`. Kein Xcode-Projekt, kein
 Paketmanager – `bash build.sh` genügt. Quelltext und Kommentare sind auf
 Deutsch.
 
