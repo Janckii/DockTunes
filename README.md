@@ -148,7 +148,10 @@ bleibt es bei Titel und Interpret.
 ## Playlists
 
 Der Knopf mit dem Pluszeichen legt den laufenden Titel in die zuletzt gewählte
-Playlist. Die Auswahl ist ein eigenes Fenster mit Suchfeld; Playlists lassen
+Playlist. Welche das war, steht danach kurz in der Unterzeile („Zu … hinzugefügt")
+– ein Haken allein sagt nur, dass es geklappt hat, nicht wohin. Eine andere
+Playlist wählt man über **Rechtsklick → Zu Playlist hinzufügen …**; sie wird
+damit die neue Standardliste. Die Auswahl ist ein eigenes Fenster mit Suchfeld; Playlists lassen
 sich über den Stern zu Favoriten machen, die dann oben stehen. Gezeigt werden
 nur Playlists, in die sich auch schreiben lässt – `me/playlists` liefert auch
 alle gefolgten zurück, und dort antwortet Spotify beim Hinzufügen mit 403.

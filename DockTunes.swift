@@ -2356,6 +2356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pollTimer: Timer?
     private var pollInterval: TimeInterval = 0
     private var repeatMode = 0
+    private var noticeUntil = Date.distantPast
     private var loopTimer: Timer?
     private var motionTimer: Timer?
     private var spectrumTimer: Timer?
@@ -2730,13 +2731,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !track.uri.isEmpty else { return }
         SpotifyWeb.add(trackURI: track.uri, to: playlist) { [weak self] result in
             switch result {
-            case .success: self?.flashAddButton(symbol: "checkmark.circle.fill")
+            case .success:
+                self?.flashAddButton(symbol: "checkmark.circle.fill")
+                // Ein Haken sagt nur "hat geklappt", nicht wohin. Der Name der
+                // Liste steht deshalb kurz in der Unterzeile.
+                self?.flashNotice("Zu \(playlist.name.trimmingCharacters(in: .whitespaces)) hinzugefügt")
             case .failure(let error):
                 self?.flashAddButton(symbol: "exclamationmark.circle.fill")
                 let text = error.localizedDescription
                 self?.showError("Titel konnte nicht hinzugefügt werden", text,
                                 offerRelink: text.contains("403"))
             }
+        }
+    }
+
+    /// Kurze Rueckmeldung in der Unterzeile. Nutzt denselben Weg wie die
+    /// Lautstaerkeanzeige: der Liedtext darf waehrenddessen nicht nachruecken.
+    private func flashNotice(_ text: String) {
+        noticeUntil = Date().addingTimeInterval(1.8)
+        view.setTexts(title: view.titleLabel.stringValue, subtitle: text)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+            guard let self, Date() >= self.noticeUntil else { return }
+            self.updateText()
         }
     }
 
@@ -2924,7 +2940,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Zeigt entweder Titel und Interpret oder die mitlaufende Textzeile.
     private func updateText() {
-        guard !view.progressBar.showsVolume else { return }
+        guard !view.progressBar.showsVolume, Date() >= noticeUntil else { return }
         guard lyricsMode else {
             // Das Album kommt erst bei grosser Breite dazu; darunter waere die
             // Zeile nur abgeschnitten.
