@@ -59,8 +59,17 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 Im Rechtsklick-Menü einschaltbar. Statt Cover und Titel zeigt das Panel dann
 die laufende Textzeile und darunter die nächste.
 
+Es steht immer nur die **laufende** Zeile da, dafür über zwei Zeilen, wenn sie
+nicht auf eine passt. Die abgeschwächte Vorschau auf die nächste Zeile ist
+entfallen: lange Zeilen wurden dadurch abgeschnitten, und das Kommende ist
+weniger wert als das Laufende vollständig. Reichen zwei Zeilen nicht, wird
+sichtbar gekürzt statt stillschweigend abgeschnitten.
+
 Beim Zeilenwechsel steigt die neue Zeile ein und blendet auf (260 ms) – sonst
 steht der Text plötzlich anders da und der Wechsel geht unter.
+
+Vor der ersten Zeile und in Instrumentalpausen stehen Titel und Interpret
+statt einer leeren Fläche.
 
 Die Texte kommen von [lrclib.net](https://lrclib.net), einem offenen
 Verzeichnis ohne Anmeldung. Dorthin gehen Titel und Interpret des laufenden
@@ -99,7 +108,8 @@ Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
 ```bash
 defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
 defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
-defaults write de.jancko.docktunes rimAlpha -float 0.16   # Stärke der Lichtkante
+defaults write de.jancko.docktunes rimAlpha -float 0.30   # Stärke der Lichtkante
+defaults write de.jancko.docktunes lyricsWidth -float 520 # Panelbreite im Liedtext-Modus
 ```
 
 ---

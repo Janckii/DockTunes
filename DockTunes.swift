@@ -1621,6 +1621,44 @@ private final class PlayerView: NSView {
 
     private var lastTitle: String?
     private var lastSubtitle: String?
+    /// Im Liedtext-Modus traegt das obere Feld die Zeile allein und darf
+    /// umbrechen; sonst stehen dort Titel und Interpret untereinander.
+    private(set) var wrapsText = false
+
+    /// Eine Liedtextzeile fuer sich, bei Bedarf ueber zwei Zeilen. Die
+    /// abgeschwaechte naechste Zeile entfaellt dafuer – lange Zeilen wurden
+    /// sonst abgeschnitten, und das Kommende ist weniger wert als das
+    /// Laufende vollstaendig.
+    func setLyricLine(_ text: String) {
+        guard text != lastTitle || !wrapsText else { return }
+        let newLine = wrapsText && lastTitle != nil
+        lastTitle = text
+        lastSubtitle = nil
+        if !wrapsText {
+            wrapsText = true
+            artistLabel.isHidden = true
+            titleLabel.cell?.usesSingleLineMode = false
+            titleLabel.maximumNumberOfLines = 2
+            // Umbrechen, und wenn zwei Zeilen nicht reichen, die letzte
+            // sichtbar kuerzen statt den Rest stillschweigend wegzulassen.
+            // Das macht die Zelle, nicht der Umbruchmodus: .byTruncatingTail
+            // dort unterbindet den Umbruch ganz.
+            titleLabel.lineBreakMode = .byWordWrapping
+            titleLabel.cell?.truncatesLastVisibleLine = true
+        }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        paragraph.lineSpacing = 0
+        titleLabel.attributedStringValue = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
+            .foregroundColor: primaryColor,
+            .shadow: shadow(radius: 3, opacity: 0.9),
+            .paragraphStyle: paragraph,
+        ])
+        needsLayout = true
+        onTextChange?()
+        if newLine { animateLine(titleLabel, rise: 5, delay: 0) }
+    }
 
     func setTexts(title: String, subtitle: String) {
         // Im Liedtext-Modus laeuft das zehnmal je Sekunde, die Zeile wechselt
@@ -1630,9 +1668,16 @@ private final class PlayerView: NSView {
         // Im Liedtext-Modus wechselt die Zeile mitten im Lauf. Ohne Bewegung
         // ist der Wechsel kaum zu bemerken – der Text steht einfach ploetzlich
         // anders da. Nur bei neuer Zeile, nicht bei der Lautstaerkeanzeige.
-        let newLine = showsLyrics && lastTitle != nil && title != lastTitle
+        let newLine = showsLyrics && !wrapsText && lastTitle != nil && title != lastTitle
         lastTitle = title
         lastSubtitle = subtitle
+        if wrapsText {
+            wrapsText = false
+            artistLabel.isHidden = false
+            titleLabel.cell?.usesSingleLineMode = true
+            titleLabel.maximumNumberOfLines = 1
+            titleLabel.lineBreakMode = .byTruncatingTail
+        }
         defer {
             onTextChange?()
             if newLine {
@@ -1947,8 +1992,28 @@ private final class PlayerView: NSView {
         let textWidth = max(20, rightEdge - textLeft)
         let lineHeight: CGFloat = 14
         let top = (bounds.height - lineHeight * 2) / 2
-        titleLabel.frame = CGRect(x: textLeft, y: round(top + lineHeight - 1) + lift, width: textWidth, height: lineHeight)
-        artistLabel.frame = CGRect(x: textLeft, y: round(top) + lift, width: textWidth, height: lineHeight)
+        if wrapsText {
+            // Eine Zeile sitzt mittig, zwei belegen dasselbe Band wie sonst
+            // Titel und Interpret – so stoesst der Text nicht an die Zeitleiste.
+            let needed = titleLabel.attributedStringValue.boundingRect(
+                with: CGSize(width: textWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading]).height
+            let twoLines = needed > lineHeight + 1
+            let height = twoLines ? lineHeight * 2 : lineHeight
+            // Eine Zeile steht schlicht mittig. Zwei brauchen einen Punkt
+            // Versatz nach unten: die Zelle setzt den Text oben an, unten
+            // bleibt der Platz fuer Unterlaengen ungenutzt. Gemessen liegt der
+            // Block damit auf derselben Mitte wie Titel und Interpret im
+            // Normalmodus (beide y=35,0), die Grundlinie einer einzelnen Zeile
+            // auf der Mitte von deren beiden Grundlinien (y=38).
+            let correction: CGFloat = twoLines ? -1 : 0
+            titleLabel.frame = CGRect(x: textLeft,
+                                      y: round((bounds.height - height) / 2 + correction) + lift,
+                                      width: textWidth, height: height)
+        } else {
+            titleLabel.frame = CGRect(x: textLeft, y: round(top + lineHeight - 1) + lift, width: textWidth, height: lineHeight)
+            artistLabel.frame = CGRect(x: textLeft, y: round(top) + lift, width: textWidth, height: lineHeight)
+        }
 
         // Zeitleiste: links die laufende, rechts die gesamte Zeit – beide mit
         // fester Breite, damit die Leiste beim Ticken nicht wandert.
@@ -2034,7 +2099,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let view else { return 372 }
         // Im Liedtext-Modus fest: mitwandernde Breite waere bei jeder neuen
         // Textzeile eine andere und das Panel damit staendig in Bewegung.
-        if lyricsMode { return 520 }
+        if lyricsMode {
+            let width = UserDefaults.standard.object(forKey: "lyricsWidth") as? Double ?? 520
+            return CGFloat(min(max(width, 240), 900))
+        }
         let height = lastDockFrame.height > 0 ? lastDockFrame.height : 49
         return min(max(view.preferredWidth(height: height), 260), 620)
     }
@@ -2539,8 +2607,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                           subtitle: lyricsTrackURI.isEmpty ? "" : "kein Liedtext gefunden")
             return
         }
-        let (current, next) = Lyrics.at(displayPosition, in: lyricLines)
-        view.setTexts(title: current, subtitle: next)
+        let (current, _) = Lyrics.at(displayPosition, in: lyricLines)
+        // Vor der ersten Zeile und in Instrumentalpausen steht nichts an –
+        // dann lieber Titel und Interpret als eine leere Flaeche.
+        if current.isEmpty {
+            view.setTexts(title: track.title, subtitle: track.artist)
+        } else {
+            view.setLyricLine(current)
+        }
     }
 
     /// Aus: Spotifys eigener Regler (Vorgabe). An: die des Systems.
