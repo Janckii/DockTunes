@@ -1758,6 +1758,12 @@ private final class PlayerView: NSView {
     /// Die Kanten zieht der Fenster-Server selbst; siehe PlayerPanel.
     override func mouseDown(with event: NSEvent) { onClick?() }
 
+    /// Das Menue wird bei jedem Rechtsklick neu gebaut. Beim Start steht die
+    /// Dock-Geometrie noch nicht fest, und davon haengt ab, welche Breiten
+    /// ueberhaupt neben den Dock passen.
+    var menuProvider: (() -> NSMenu?)?
+    override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() ?? super.menu(for: event) }
+
     var onScroll: ((Int) -> Void)?
     private var scrollAccumulator: CGFloat = 0
 
@@ -2326,8 +2332,10 @@ private final class PlayerView: NSView {
         // Auf einem 1512 Punkte breiten Bildschirm bleiben neben einem 850
         // Punkte breiten Dock nur 327 – feste Schwellen von 360 und 380 haetten
         // dort Plus und Wiederholen fuer immer verschluckt, obwohl beide passen.
-        // Weggelassen wird in der Reihenfolge des Nutzens: Plus zuerst, dann
-        // Wiederholen, dann Zurueck. Weiter und Abspielen bleiben immer.
+        // Weggelassen wird in der Reihenfolge des Nutzens: Wiederholen zuerst,
+        // dann das Plus, dann Zurueck. Weiter und Abspielen bleiben immer.
+        // Zur Playlist legen kann man einen Titel nur hier; wiederholen auch
+        // in Spotify selbst.
         let textLeftForFit = showsLyrics ? pad : pad + (bounds.height - pad * 2 - 2) + gap
         var showAdd = true, showRepeat = true, showPrevious = true
         for _ in 0..<3 {
@@ -2335,8 +2343,8 @@ private final class PlayerView: NSView {
                 + (showsSpectrum ? 30 + gap : 0)
             let room = bounds.width - pad - used - textLeftForFit - gap
             if room >= Self.minTitleRoom { break }
-            if showAdd { showAdd = false }
-            else if showRepeat { showRepeat = false }
+            if showRepeat { showRepeat = false }
+            else if showAdd { showAdd = false }
             else if showPrevious { showPrevious = false }
             else { break }
         }
@@ -2655,7 +2663,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.showVolume(next)
             Spotify.setVolume(next)
         }
-        view.menu = buildContextMenu()
+
+        view.menuProvider = { [weak self] in self?.buildContextMenu() }
 
         view.progressBar.onScrub = { [weak self] fraction in
             guard let self else { return }
@@ -2743,14 +2752,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let steps: [(String, Double)] = lyricsMode
             ? [(t("Schmal", "Narrow"), 420), (t("Normal", "Normal"), 520), (t("Breit", "Wide"), 640), (t("Sehr breit", "Very wide"), 760)]
             : [(t("Schmal", "Narrow"), 250), (t("Normal", "Normal"), 380), (t("Breit", "Wide"), 520), (t("Sehr breit", "Very wide"), 640)]
-        let current = UserDefaults.standard.object(forKey: widthKey) as? Double
-            ?? (lyricsMode ? 520 : 380)
-        let widthMenu = NSMenu()
+        // Gegen die tatsaechliche Breite pruefen, nicht gegen die gespeicherte:
+        // die letzte Stufe traegt den verfuegbaren Platz, nicht den Wunschwert.
+        let current = Double(panelWidth)
+        // Nur anbieten, was neben den Dock passt. Auf einem schmalen Schirm
+        // waere "Sehr breit" eine Wahl ohne Wirkung; die letzte Stufe bekommt
+        // stattdessen den tatsaechlich verfuegbaren Platz.
+        let room = Double(clampWidth(.greatestFiniteMagnitude))
+        // Gezeigt wird, was passt; gespeichert der urspruengliche Wunschwert.
+        // Sonst merkte sich die App die Zahl dieses Bildschirms und bliebe an
+        // einem groesseren Schirm unnoetig schmal.
+        var fitting: [(String, Double, Double)] = []
         for (title, value) in steps {
+            if value <= room { fitting.append((title, value, value)) }
+            else { fitting.append((title, room, value)); break }
+        }
+        let widthMenu = NSMenu()
+        for (title, shown, stored) in fitting {
             let item = NSMenuItem(title: title, action: #selector(setLyricsWidth(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = value
-            item.state = abs(current - value) < 1 ? .on : .off
+            item.representedObject = stored
+            item.state = abs(current - shown) < 1 ? .on : .off
             widthMenu.addItem(item)
         }
         let widthItem = NSMenuItem(title: t("Breite", "Width"), action: nil, keyEquivalent: "")
@@ -2787,7 +2809,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             alert.runModal()
         }
-        view.menu = buildContextMenu()
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
@@ -2965,7 +2986,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             switch result {
             case .success:
-                self.view.menu = self.buildContextMenu()
                 self.choosePlaylist()
             case .failure(let error):
                 self.showError("Verbindung fehlgeschlagen", error.localizedDescription)
@@ -2975,7 +2995,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func unlinkSpotify() {
         SpotifyWeb.unlink()
-        view.menu = buildContextMenu()
     }
 
     private func showError(_ title: String, _ text: String, offerRelink: Bool = false) {
@@ -3120,7 +3139,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let defaults = UserDefaults.standard
         defaults.set(!defaults.bool(forKey: "showSpectrum"), forKey: "showSpectrum")
         view.showsSpectrum = spectrumEnabled
-        view.menu = buildContextMenu()
         updateAnalyzer()
         followDock()
     }
@@ -3168,7 +3186,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func setVolumeSource(_ sender: NSMenuItem) {
         guard let wantsSystem = sender.representedObject as? Bool else { return }
         UserDefaults.standard.set(wantsSystem, forKey: "systemVolume")
-        view.menu = buildContextMenu()
     }
 
     @objc private func setLyricsWidth(_ sender: NSMenuItem) {
@@ -3178,7 +3195,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastDockFrame = .null          // Breite geaendert, Position neu setzen
         followDock()
         updateText()                   // Album und Vorschau haengen an der Breite
-        view.menu = buildContextMenu()
     }
 
     /// aus → alle → einzeln → aus.
@@ -3228,7 +3244,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let defaults = UserDefaults.standard
         defaults.set(!defaults.bool(forKey: "lyricsMode"), forKey: "lyricsMode")
         view.showsLyrics = lyricsMode
-        view.menu = buildContextMenu()
         cachedWidth = nil
         lastDockFrame = .null          // Breite hat sich geändert, Position neu setzen
         if lyricsMode {
