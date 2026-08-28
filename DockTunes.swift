@@ -1416,7 +1416,9 @@ private final class PlayerView: NSView {
 
     // Was bei welcher Breite dazukommt. Die Reihenfolge folgt dem Nutzen:
     // weiter ist wichtiger als zurueck, und beides wichtiger als das Plus.
-    private var showsArtistLine: Bool { bounds.width >= 280 }
+    // Der Interpret braucht keine Breite, er steht unter dem Titel. Selbst im
+    // schmalsten Panel bleibt fuer beide Zeilen Platz.
+    private var showsArtistLine: Bool { true }
     private var showsPreviousButton: Bool { bounds.width >= 300 }
     private var showsAddButton: Bool { bounds.width >= 360 }
     var showsExtras: Bool { bounds.width >= 520 }
@@ -1634,9 +1636,21 @@ private final class PlayerView: NSView {
     var primaryColor: NSColor { .white }
     var secondaryColor: NSColor { NSColor(calibratedWhite: 1, alpha: 0.8) }
 
+    /// Gemeinsamer Faktor fuer alle Schatten; 0 schaltet sie ab.
+    ///
+    /// Warum ueberhaupt Schatten: ueber einem hellen Fenster hinter dem Dock
+    /// steht weisser Text auf einer Flaeche von 221 – gemessene 34 Stufen
+    /// Eigenkontrast, das traegt nicht. Der Schatten bringt dort 60 Stufen
+    /// dazu. Ueber einem dunklen Schreibtischbild ist er dagegen kaum zu
+    /// sehen (Flaeche 82, Halo 23), kostet also fast nichts an Ruhe.
+    /// Frueher 1,0 – das war ueber dunklem Grund unnoetig praegnant.
+    static var shadowStrength: CGFloat {
+        CGFloat(UserDefaults.standard.object(forKey: "shadowStrength") as? Double ?? 0.6)
+    }
+
     private func shadow(radius: CGFloat, opacity: Float) -> NSShadow {
         let s = NSShadow()
-        s.shadowColor = NSColor.black.withAlphaComponent(CGFloat(opacity))
+        s.shadowColor = NSColor.black.withAlphaComponent(CGFloat(opacity) * Self.shadowStrength)
         s.shadowBlurRadius = radius
         s.shadowOffset = NSSize(width: 0, height: -0.5)
         return s
@@ -1653,6 +1667,8 @@ private final class PlayerView: NSView {
     /// nur beim Sprung auf zweistellige Minuten.
     func setTimes(running: String, total: String) {
         var changed = false
+        // Bisher als einzige Beschriftung ohne Schatten – ueber einem hellen
+        // Fenster hinter dem Dock stand sie damit fast unlesbar auf der Flaeche.
         if timeLabel.stringValue != running { timeLabel.stringValue = running; changed = true }
         if totalLabel.stringValue != total { totalLabel.stringValue = total; changed = true }
         guard changed else { return }
@@ -1882,7 +1898,7 @@ private final class PlayerView: NSView {
             button.contentTintColor = primaryColor
             button.wantsLayer = true
             button.layer?.shadowColor = NSColor.black.cgColor
-            button.layer?.shadowOpacity = 0.55
+            button.layer?.shadowOpacity = Float(0.55 * Self.shadowStrength)
             button.layer?.shadowRadius = 2.5
             button.layer?.shadowOffset = .zero
         }
@@ -1891,6 +1907,16 @@ private final class PlayerView: NSView {
         spectrum.tone = primaryColor
         timeLabel.textColor = secondaryColor
         totalLabel.textColor = secondaryColor
+        // Schatten ueber die Ebene, nicht als Textattribut: ein Attributtext
+        // misst sich anders, und die Feldbreite haengt an dieser Messung –
+        // die Zeiten wurden dadurch um ein Zeichen beschnitten.
+        for label in [timeLabel, totalLabel] {
+            label.wantsLayer = true
+            label.layer?.shadowColor = NSColor.black.cgColor
+            label.layer?.shadowOpacity = Float(0.8 * Self.shadowStrength)
+            label.layer?.shadowRadius = 2
+            label.layer?.shadowOffset = .zero
+        }
         needsDisplay = true
     }
 

@@ -70,11 +70,10 @@ weniger als 200 Punkte nimmt das Panel nicht an.
 
 | ab | kommt dazu |
 |---|---|
-| 200 | Cover, Titel, Abspielen/Pause, Weiter |
-| 280 | Interpret |
+| 200 | Cover, Titel, Interpret, Abspielen/Pause, Weiter |
+| 240 | Tonanzeige (wenn im Menü eingeschaltet) |
 | 300 | Zurück |
 | 360 | Playlist-Knopf |
-| 240 | Tonanzeige (wenn im Menü eingeschaltet) |
 | 520 | Album, und Zeitleiste samt Zeiten dauerhaft statt nur beim Zeigen |
 | 700 | im Liedtext-Modus: die nächste Zeile als Vorschau |
 
@@ -157,6 +156,7 @@ Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
 defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
 defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
 defaults write de.jancko.docktunes rimAlpha -float 0.30   # Stärke der Lichtkante
+defaults write de.jancko.docktunes shadowStrength -float 0.6 # Schatten, 0 = aus
 defaults write de.jancko.docktunes panelWidth -float 460  # Breite, normal (ab 200)
 defaults write de.jancko.docktunes lyricsWidth -float 580 # Breite im Liedtext-Modus
 ```
@@ -196,6 +196,15 @@ Das Panel folgt der Position des Docks:
 - Kein Schlagschatten. Der Dock wirft keinen: der Grund neben ihm misst exakt
   den Wert des Hintergrunds. Mit Schatten saß das Panel sichtbar *auf* dem
   Bild statt darin.
+- **Schatten hinter Text und Knöpfen.** Nicht Zierde, sondern das, was die
+  Lesbarkeit trägt: über einem hellen Fenster hinter dem Dock steht weißer Text
+  auf einer Fläche von 221 – gemessene **34 Stufen** Eigenkontrast, das reicht
+  nicht. Der Schatten legt dort 60 Stufen dazu. Über einem dunklen
+  Schreibtischbild ist er dagegen kaum zu sehen (Fläche 82, Halo 23).
+  Die Stärke lag früher bei 1,0, was über dunklem Grund unnötig prägnant war;
+  jetzt 0,6. Alles zusammen einstellbar:
+  `defaults write de.jancko.docktunes shadowStrength -float 0` schaltet sie ab.
+  Die Zeitangaben hatten als einzige gar keinen – sie haben jetzt denselben.
 - Die Textfarbe hängt bewusst **nicht** am Systemmodus: Wie hell die Panelfläche
   ist, bestimmt der Hintergrund dahinter (gemessen 0,21 über Schwarz bis 0,88
   über Weiß), nicht Hell- oder Dunkelmodus. Heller Text mit Schatten trägt auf
