@@ -74,6 +74,7 @@ weniger als 200 Punkte nimmt das Panel nicht an.
 | 280 | Interpret |
 | 300 | Zurück |
 | 360 | Playlist-Knopf |
+| 280 | Tonanzeige (wenn im Menü eingeschaltet) |
 | 520 | Album, und Zeitleiste samt Zeiten dauerhaft statt nur beim Zeigen |
 | 700 | im Liedtext-Modus: die nächste Zeile als Vorschau |
 
@@ -81,10 +82,15 @@ Die Reihenfolge folgt dem Nutzen: **weiter** ist wichtiger als zurück, und
 beides wichtiger als das Plus – im schmalsten Panel steht deshalb die
 Weiter-Taste, nicht der Playlist-Knopf.
 
-Die **Tonanzeige** hängt nicht an einer Breite, sondern am Platz: bleibt nach
-dem Titel noch genug übrig, ist sie da – bei kurzem Titel auch in einem
-schmalen Panel. Im Liedtext-Modus wäre das unruhig, weil der Text alle paar
-Sekunden wechselt; dort gilt eine feste Grenze von 460.
+Die **Tonanzeige** läuft ab 280 Punkten immer; ob sie überhaupt erscheint,
+entscheidet der Schalter im Rechtsklick-Menü. Nur im schmalsten Panel bleibt
+sie weg, dort wäre für den Titel sonst nichts mehr übrig.
+
+**Passt der Titel nicht, läuft er durch** – endlos, mit 34 Punkten je Sekunde
+und 40 Punkten Abstand zwischen den Durchläufen. Nur der Titel; der Interpret
+wird weiterhin gekürzt, und im Liedtext-Modus bricht die Zeile um statt zu
+wandern. Der Lauftext kostet rund 1,5 % eines Kerns, solange er läuft: die
+Bewegung lässt die Glasfläche bei jedem Bild neu mischen.
 
 Normal- und Liedtext-Modus merken sich ihre Breite getrennt – der Liedtext
 braucht mehr Platz als Cover, Titel und Knöpfe.
@@ -367,6 +373,16 @@ aktiviert sich nie – Klicks aufs Panel sollen den Fokus nicht stehlen.
 `cursorUpdate` nicht mehr.
 
 Die vier Stufen im Menü tun dasselbe mit weniger Umstand.
+
+## Lauftext, warum als Bild
+
+Der durchlaufende Titel ist **ein** Bild mit zwei Abzügen des Textes, das eine
+`CALayer` schiebt. Zwei Textfelder nebeneinander wären naheliegender und waren
+der erste Versuch – AppKit zeichnet eine Ansicht aber nicht, solange sie
+außerhalb des Ausschnitts liegt. Die zweite Kopie blieb dadurch leer, und
+zwischen den Durchläufen klaffte eine Lücke von mehreren Sekunden
+(nachgemessen: 7 von 10,6 Sekunden Umlauf). `wantsLayer` auf den Textfeldern
+half nicht.
 
 ## Mitmachen
 

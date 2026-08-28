@@ -1370,6 +1370,10 @@ private final class PlayerView: NSView {
     let progressBar = ProgressBar()
     let timeLabel = NSTextField(labelWithString: "")
     let totalLabel = NSTextField(labelWithString: "")
+    private let titleClip = NSView()
+    private let marquee = CALayer()
+    private var marqueeKey = ""
+
     let spectrum = SpectrumView()
     var showsSpectrum = false { didSet { needsLayout = true } }
 
@@ -1443,11 +1447,19 @@ private final class PlayerView: NSView {
         cover.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
         content.addSubview(cover)
 
+        // Der Titel sitzt in einem Ausschnitt. Passt er nicht hinein, laeuft
+        // er darin endlos durch; die zweite Kopie schliesst die Luecke, damit
+        // der Text nicht am Rand abreisst und von vorn anfaengt.
+        titleClip.wantsLayer = true
+        titleClip.layer?.masksToBounds = true
+        titleClip.layer?.addSublayer(marquee)
+        marquee.isHidden = true
+        titleClip.addSubview(titleLabel)
+        content.addSubview(titleClip)
         titleLabel.font = .systemFont(ofSize: 11.5, weight: .semibold)
         titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.cell?.usesSingleLineMode = true
-        content.addSubview(titleLabel)
 
         artistLabel.font = .systemFont(ofSize: 10.5, weight: .regular)
         artistLabel.textColor = .secondaryLabelColor
@@ -1695,6 +1707,9 @@ private final class PlayerView: NSView {
             titleLabel.maximumNumberOfLines = 1
             titleLabel.lineBreakMode = .byTruncatingTail
         }
+        // Der Lauftext haengt am Text: ohne neues Layout liefe die Bewegung
+        // des vorigen Titels mit der alten Laenge weiter.
+        needsLayout = true
         defer {
             onTextChange?()
             if newLine {
@@ -1933,6 +1948,57 @@ private final class PlayerView: NSView {
         return ceil(total)
     }
 
+    /// Setzt den Titelausschnitt und entscheidet, ob der Text darin laeuft.
+    /// Im Liedtext-Modus nicht: dort bricht die Zeile um, statt zu wandern.
+    ///
+    /// Der Lauftext ist ein einzelnes Bild mit zwei Abzuegen des Titels, das
+    /// der Compositor schiebt. Zwei Textfelder waeren naheliegender, aber
+    /// AppKit zeichnet eine Ansicht nicht, solange sie ausserhalb des
+    /// Ausschnitts liegt – die zweite Kopie blieb dadurch leer und es entstand
+    /// eine Luecke von mehreren Sekunden (nachgemessen).
+    private func placeTitle(_ rect: NSRect, scrolls: Bool) {
+        titleClip.frame = rect
+        let text = titleLabel.attributedStringValue
+        let natural = ceil(text.size().width)
+        let key = "\(titleLabel.stringValue)|\(Int(rect.width))|\(Int(rect.height))|\(scrolls)"
+        guard scrolls, natural > rect.width else {
+            titleLabel.isHidden = false
+            titleLabel.frame = titleClip.bounds
+            if marqueeKey != key {
+                marqueeKey = key
+                marquee.removeAnimation(forKey: "lauftext")
+                marquee.isHidden = true
+            }
+            return
+        }
+        titleLabel.isHidden = true
+        marquee.isHidden = false
+        guard marqueeKey != key else { return }
+        marqueeKey = key
+
+        // Zwei Abzuege im Abstand von 40 Punkten. Das Band wandert um genau
+        // eine Abzugslaenge; danach steht der zweite dort, wo der erste war.
+        let space: CGFloat = 40
+        let step = natural + space
+        let size = NSSize(width: step + natural, height: rect.height)
+        let baseline = (rect.height - ceil(text.size().height)) / 2
+        let image = NSImage(size: size, flipped: false) { _ in
+            text.draw(at: NSPoint(x: 0, y: baseline))
+            text.draw(at: NSPoint(x: step, y: baseline))
+            return true
+        }
+        marquee.contents = image
+        marquee.contentsScale = window?.backingScaleFactor ?? 2
+        marquee.frame = CGRect(origin: .zero, size: size)
+        marquee.removeAnimation(forKey: "lauftext")
+        let move = CABasicAnimation(keyPath: "position.x")
+        move.byValue = -step
+        move.duration = Double(step) / 34      // Punkte je Sekunde
+        move.repeatCount = .infinity
+        move.timingFunction = CAMediaTimingFunction(name: .linear)
+        marquee.add(move, forKey: "lauftext")
+    }
+
     override func layout() {
         super.layout()
 
@@ -2010,21 +2076,12 @@ private final class PlayerView: NSView {
         // 2 Punkte Zugabe: nachgemessen liegt die Tonanzeige sonst zu dicht am Knopf.
         var rightEdge = x + symbolGap - gap - 2
 
-        // Tonanzeige davor. Nicht ab einer festen Breite, sondern wenn nach
-        // dem Text noch Platz bleibt – bei kurzem Titel passt sie auch in ein
-        // schmales Panel. Im Liedtext-Modus waere das unruhig, dort wechselt
-        // der Text alle paar Sekunden; deshalb bleibt es dort bei einer Grenze.
+        // Tonanzeige davor. Ob sie laeuft, entscheidet der Schalter im Menue –
+        // nur im schmalsten Panel bleibt sie weg, dort waere fuer den Titel
+        // sonst nichts mehr uebrig. Passt der Titel nicht, laeuft er durch.
         let spectrumWidth: CGFloat = 30
         let textLeft = showsLyrics ? pad : cover.frame.maxX + gap
-        let needed = ceil(max(titleLabel.attributedStringValue.size().width,
-                              artistLabel.isHidden ? 0 : artistLabel.attributedStringValue.size().width))
-        // Waehrend der Lautstaerkeanzeige steht in der Unterzeile ein anderer,
-        // anders langer Text. Ohne diese Sperre koennte die Tonanzeige fuer
-        // die 1,4 Sekunden verschwinden und danach zurueckspringen.
-        let spectrumVisible = showsSpectrum && (progressBar.showsVolume
-            ? !spectrum.isHidden
-            : showsLyrics ? bounds.width >= 460
-                          : (rightEdge - textLeft) - needed >= spectrumWidth + gap)
+        let spectrumVisible = showsSpectrum && bounds.width >= 280
         spectrum.isHidden = !spectrumVisible
         if spectrumVisible {
             let spectrumHeight: CGFloat = 20
@@ -2042,8 +2099,8 @@ private final class PlayerView: NSView {
         if !wrapsText && !showsArtistLine {
             // Nur der Titel: dann steht er mittig, nicht auf der oberen der
             // beiden Zeilen.
-            titleLabel.frame = CGRect(x: textLeft, y: round((bounds.height - lineHeight) / 2) + lift,
-                                      width: textWidth, height: lineHeight)
+            placeTitle(CGRect(x: textLeft, y: round((bounds.height - lineHeight) / 2) + lift,
+                              width: textWidth, height: lineHeight), scrolls: true)
         } else if wrapsText {
             // Eine Zeile sitzt mittig, zwei belegen dasselbe Band wie sonst
             // Titel und Interpret – so stoesst der Text nicht an die Zeitleiste.
@@ -2059,11 +2116,12 @@ private final class PlayerView: NSView {
             // Normalmodus (beide y=35,0), die Grundlinie einer einzelnen Zeile
             // auf der Mitte von deren beiden Grundlinien (y=38).
             let correction: CGFloat = twoLines ? -1 : 0
-            titleLabel.frame = CGRect(x: textLeft,
-                                      y: round((bounds.height - height) / 2 + correction) + lift,
-                                      width: textWidth, height: height)
+            placeTitle(CGRect(x: textLeft,
+                              y: round((bounds.height - height) / 2 + correction) + lift,
+                              width: textWidth, height: height), scrolls: false)
         } else {
-            titleLabel.frame = CGRect(x: textLeft, y: round(top + lineHeight - 1) + lift, width: textWidth, height: lineHeight)
+            placeTitle(CGRect(x: textLeft, y: round(top + lineHeight - 1) + lift,
+                              width: textWidth, height: lineHeight), scrolls: true)
             artistLabel.frame = CGRect(x: textLeft, y: round(top) + lift, width: textWidth, height: lineHeight)
         }
 
