@@ -2721,7 +2721,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .success: self?.flashAddButton(symbol: "checkmark.circle.fill")
             case .failure(let error):
                 self?.flashAddButton(symbol: "exclamationmark.circle.fill")
-                self?.showError("Titel konnte nicht hinzugefügt werden", error.localizedDescription)
+                let text = error.localizedDescription
+                self?.showError("Titel konnte nicht hinzugefügt werden", text,
+                                offerRelink: text.contains("403"))
             }
         }
     }
@@ -2775,13 +2777,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.menu = buildContextMenu()
     }
 
-    private func showError(_ title: String, _ text: String) {
+    private func showError(_ title: String, _ text: String, offerRelink: Bool = false) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = text
         alert.window.level = .floating
+        alert.addButton(withTitle: "OK")
+        // Spotify prueft die Freigabe beim Anmelden, nicht bei jedem Aufruf.
+        // Wer sich erst danach im Dashboard eintraegt, braucht eine neue
+        // Anmeldung – ein Erneuern des Schluessels genuegt nicht (nachgeprueft).
+        if offerRelink { alert.addButton(withTitle: "Neu verbinden …") }
         NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        if alert.runModal() == .alertSecondButtonReturn, offerRelink {
+            SpotifyWeb.unlink()
+            setUpSpotifyLink()
+        }
     }
 
     // MARK: Titelanzeige
