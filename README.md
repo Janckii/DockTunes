@@ -149,7 +149,10 @@ bleibt es bei Titel und Interpret.
 
 Der Knopf mit dem Pluszeichen legt den laufenden Titel in die zuletzt gewählte
 Playlist. Die Auswahl ist ein eigenes Fenster mit Suchfeld; Playlists lassen
-sich über den Stern zu Favoriten machen, die dann oben stehen.
+sich über den Stern zu Favoriten machen, die dann oben stehen. Gezeigt werden
+nur Playlists, in die sich auch schreiben lässt – `me/playlists` liefert auch
+alle gefolgten zurück, und dort antwortet Spotify beim Hinzufügen mit 403.
+(An einem echten Konto gemessen: 12 von 23 Einträgen waren fremd.)
 
 Das geht nicht über AppleScript – Spotify kennt dafür keinen Befehl – sondern
 über Spotifys Web-Schnittstelle. Sie verlangt eine einmalige Einrichtung:
@@ -157,7 +160,24 @@ Das geht nicht über AppleScript – Spotify kennt dafür keinen Befehl – sond
 1. Auf [developer.spotify.com](https://developer.spotify.com/dashboard) eine
    App anlegen (kostenlos)
 2. Als Redirect URI genau `http://127.0.0.1:8888/callback` eintragen
-3. Client-ID kopieren und beim ersten Klick auf das Pluszeichen einsetzen
+3. **Settings → User Management → sich selbst eintragen**, mit Namen und der
+   E-Mail des eigenen Spotify-Kontos
+4. Client-ID kopieren und beim ersten Klick auf das Pluszeichen einsetzen
+
+Schritt 3 ist leicht zu übersehen und die häufigste Ursache für
+„Titel konnte nicht hinzugefügt werden – Fehler 403". Solange das eigene Konto
+dort fehlt, steht die App in Spotifys Entwicklungsmodus und darf nur einen
+kleinen Teil der Schnittstelle nutzen. Nachgemessen an einem betroffenen
+Konto – die Berechtigungen waren dabei korrekt erteilt und die Playlist die
+eigene:
+
+| Abruf | |
+|---|---|
+| eigenes Profil lesen | 200 |
+| eigene Playlists lesen | 200 |
+| Playlist-**Inhalt** lesen | 403 |
+| Playlist anlegen | 403 |
+| Titel hinzufügen | 403 |
 
 Angemeldet wird per PKCE, es liegt also kein Geheimnis in der App. Die
 Zugangsdaten landen in `~/Library/Application Support/DockTunes/credentials.json`

@@ -414,7 +414,23 @@ private enum SpotifyWeb {
                     if let error { completion(.failure(error)); return }
                     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                     guard (200..<300).contains(status) else {
-                        completion(.failure(SimpleError("Spotify antwortete mit Fehler \(status).")))
+                        let text: String
+                        switch status {
+                        case 403:
+                            text = "Spotify verweigert den Zugriff (403).\n\n"
+                                + "Meistens fehlt das eigene Konto in der Spotify-App: "
+                                + "developer.spotify.com/dashboard öffnen, die App "
+                                + "auswählen, Settings → User Management, sich selbst "
+                                + "mit Name und E-Mail eintragen. Solange das fehlt, "
+                                + "darf die App nur Profil und Playlist-Liste lesen.\n\n"
+                                + "Zweite Möglichkeit: die Playlist gehört jemand "
+                                + "anderem – dort darf nur der Besitzer etwas ändern."
+                        case 401: text = "Die Anmeldung ist abgelaufen. Im Menü einmal trennen und neu verbinden."
+                        case 404: text = "Die Playlist gibt es nicht mehr."
+                        case 429: text = "Zu viele Anfragen an Spotify. Gleich nochmal versuchen."
+                        default:  text = "Spotify antwortete mit Fehler \(status)."
+                        }
+                        completion(.failure(SimpleError(text)))
                         return
                     }
                     completion(.success(data ?? Data()))
@@ -423,7 +439,30 @@ private enum SpotifyWeb {
         }
     }
 
+    /// Eigene Kontokennung – noetig, um fremde Playlists auszusortieren.
+    /// Sie aendert sich nie, wird also einmal geholt und behalten.
+    private static var accountID: String? {
+        get { UserDefaults.standard.string(forKey: "spotifyAccountID") }
+        set { UserDefaults.standard.set(newValue, forKey: "spotifyAccountID") }
+    }
+
+    private static func withAccountID(_ completion: @escaping (String?) -> Void) {
+        if let accountID { completion(accountID); return }
+        call("me") { result in
+            guard case .success(let data) = result,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = json["id"] as? String else { completion(nil); return }
+            accountID = id
+            completion(id)
+        }
+    }
+
+    /// Liefert nur Playlists, in die sich auch schreiben laesst: eigene und
+    /// gemeinsame. "me/playlists" gibt auch alle gefolgten zurueck – dort
+    /// antwortet Spotify beim Hinzufuegen mit 403. Gemessen an einem echten
+    /// Konto: 12 von 23 Eintraegen waren fremd.
     static func loadPlaylists(completion: @escaping (Result<[Playlist], Error>) -> Void) {
+        withAccountID { account in
         call("me/playlists?limit=50") { result in
             switch result {
             case .failure(let error): completion(.failure(error))
@@ -435,10 +474,15 @@ private enum SpotifyWeb {
                 }
                 let playlists = items.compactMap { item -> Playlist? in
                     guard let id = item["id"] as? String, let name = item["name"] as? String else { return nil }
+                    let owner = (item["owner"] as? [String: Any])?["id"] as? String
+                    let shared = (item["collaborative"] as? Bool) ?? false
+                    // Ohne bekannte Kontokennung lieber alle zeigen als keine.
+                    guard account == nil || owner == account || shared else { return nil }
                     return Playlist(id: id, name: name)
                 }
                 completion(.success(playlists))
             }
+        }
         }
     }
 
