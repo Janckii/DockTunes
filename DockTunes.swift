@@ -722,17 +722,17 @@ private final class PlaylistPicker: NSPanel, NSSearchFieldDelegate {
             y += height
         }
         if !favored.isEmpty {
-            place(header("Favoriten"), height: 20)
+            place(header(t("Favoriten", "Favourites")), height: 20)
             favored.forEach { place(row(for: $0, isFavorite: true), height: 27) }
         }
         if !shown.isEmpty {
-            if !favored.isEmpty { place(header("Weitere"), height: 22) }
+            if !favored.isEmpty { place(header(t("Weitere", "More")), height: 22) }
             shown.forEach { place(row(for: $0, isFavorite: false), height: 27) }
         }
         if hidden > 0 {
             place(moreRow(count: hidden), height: 26)
         }
-        if matching.isEmpty { place(header("Nichts gefunden"), height: 22) }
+        if matching.isEmpty { place(header(t("Nichts gefunden", "Nothing found")), height: 22) }
 
         let contentHeight = y + 4
         list.frame = NSRect(x: 0, y: 0, width: width, height: max(contentHeight, scroll.contentSize.height))
@@ -753,7 +753,7 @@ private final class PlaylistPicker: NSPanel, NSSearchFieldDelegate {
 
     private func moreRow(count: Int) -> NSView {
         let row = PickerRow(frame: NSRect(x: 0, y: 0, width: 288, height: 26))
-        row.playlist = SpotifyWeb.Playlist(id: "__more__", name: "\(count) weitere anzeigen …")
+        row.playlist = SpotifyWeb.Playlist(id: "__more__", name: t("\(count) weitere anzeigen …", "show \(count) more …"))
         row.isMoreRow = true
         row.onPick = { [weak self] in
             self?.showsAll = true
