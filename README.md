@@ -117,76 +117,21 @@ This needs Spotify's web API and a one-time setup:
 Sign-in uses PKCE, so no secret lives in the app. Credentials land in
 `~/Library/Application Support/DockTunes/credentials.json` with mode 0600.
 
-## What does not work
+### If adding fails with 403
 
-Honest list — things that were tried and did not pan out, or that the
-platform does not allow.
-
-**Karaoke with a travelling word.** Needs per-word timestamps. lrclib only has
-them per line — checked across several tracks, not a single word mark.
-Word-accurate data exists at Musixmatch, Apple Music and Spotify itself, all
-three only behind paid or non-public interfaces. It could be guessed, but
-singing is not evenly paced; on held notes the marker visibly runs beside the
-voice. That would look like karaoke without being it.
-
-**Dragging the width like a window.** The dragging itself worked (a real but
-invisible window frame: `.titled` with `.resizable`, `canBecomeKey`, and an
-overridden `constrainFrameRect` — macOS otherwise pushes framed windows 50
-points out of the Dock area). But the pointer never changed to the resize
-cursor, and without that nobody would know they can drag there. Eight attempts,
-all without effect: `NSCursor.set()`, `push()`, re-applied ten times a second,
-for the whole panel, via `.cursorUpdate`, via `.mouseMoved`, on `.floating`
-instead of Dock level, and with the app activated. The cursor is granted by the
-active application, and DockTunes never activates — clicks on the panel must
-not steal focus. The four menu steps do the same with less fuss.
-
-**Repeat one is not Spotify's.** Its AppleScript only has a yes/no `repeating`
-property; there is no third state. Doing it over the web API would need another
-permission, a new sign-in and Spotify Premium. So the panel does it itself:
-0.6 seconds before the end it seeks back to the start. Two consequences —
-Spotify's own interface does not show that state, and the last 0.6 seconds of
-the track are cut. On a fade-out you can hear it.
-
-**Lyrics can be wrong or missing.** They come from
-[lrclib.net](https://lrclib.net), an open directory with no sign-up; title and
-artist of the current track go there, nothing else. A version is only accepted
-when the duration (within 4 seconds) **and** the artist match — both as
-conditions, not as a ranking, or a same-named piece by another artist ends up
-in the panel. If nothing matches, title and artist stay.
-
-**Spotify only.** No Apple Music, no other players. The panel reads Spotify
-over AppleScript.
-
-**One private system key.** To match the Dock's fill, `PlayerView.tune` sets the
-glass variant via `_variant`. The public steps of `NSGlassEffectView` do not
-blend linearly and therefore fit only one single backdrop. The call is guarded
-with `responds(to:)`: if the key disappears in a future macOS the app keeps
-running, the colour just no longer sits exactly.
-
-**Text over a bright window.** The panel is translucent like the Dock. Over a
-very bright window right behind it the white text stays borderline even with
-its shadow — a deliberate trade in favour of the Dock look.
-
-### The path is `/items`, not `/tracks`
-
-If adding a track fails with **403**, this is the likely reason, and it is not
-your setup: Spotify now refuses the documented path
-`/playlists/{id}/tracks`. Its successor `/items` answers normally — same token,
-same playlist, same body:
+Spotify now refuses the documented path `/playlists/{id}/tracks`; its successor
+`/items` answers normally. DockTunes uses `/items`. If you build on this code,
+that is the reason — same token, same playlist, same body:
 
 | Call | |
 |---|---|
-| `GET /me`, `/me/playlists`, `/playlists/{id}` | 200 |
-| `GET /search`, `/tracks`, `/albums` | 200 |
-| `GET /playlists/{id}/tracks` | **403** |
-| `POST /playlists/{id}/tracks` | **403** |
+| `GET /me`, `/me/playlists`, `/playlists/{id}`, `/search` | 200 |
+| `GET`/`POST` `/playlists/{id}/tracks` | **403** |
 | `GET /playlists/{id}/items` | **200** |
 | `POST /playlists/{id}/items` | **201** |
 
-Because everything else answered normally the error looked like a missing
-permission — but the permissions were granted correctly, the playlist was the
-user's own, and even a completely fresh sign-in changed nothing. Removing needs
-a different body too: `{"items": [{"uri": …}]}` instead of `{"tracks": […]}`.
+The other cause is step 3 above: without your account under User Management the
+app stays in Spotify's development mode.
 
 ## Configuration
 
