@@ -58,6 +58,18 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie 1,4 s lang an – auch im Liedtext-Modus, dort pausiert der Text so lange |
 | Rechtsklick | Menü mit allen Einstellungen |
 
+Unter dem Titel stehen alle Interpreten, nicht nur der erste. Das geht nur mit
+verbundener Web-Schnittstelle: Spotifys Skriptzugang kennt `artist` bloß in der
+Einzahl und gibt dort den ersten Namen zurück. Bei *Rich Baby Daddy (feat.
+Sexyy Red & SZA)* steht dort schlicht `Drake`, während Spotify selbst `Drake,
+Sexyy Red, SZA` führt. Ohne Verbindung bleibt es beim ersten Namen.
+
+Nachgefragt wird höchstens einmal je Titel, das Ergebnis bleibt gespeichert –
+auch ein einzelner Name, sonst stellte die App dieselbe Frage bei jedem
+Auslesen neu. Nach drei Fehlschlägen ist Ruhe. Gesucht wird der Liedtext
+weiterhin unter dem Hauptinterpreten allein: lrclib führt die Titel unter
+diesem einen Namen, eine Aufzählung findet dort nichts.
+
 ## Breite
 
 Die Breite ist **fest** und wird nicht vom Titel bestimmt. Eine mitwandernde

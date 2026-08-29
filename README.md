@@ -24,6 +24,10 @@
 - **Follows the Dock** — its height, its width when it magnifies, across
   displays, and it disappears with it in full screen.
 - Cover, title, artist, transport buttons, repeat in three states.
+- **All artists, not just the first.** Spotify's scripting interface only
+  reports one name — `Rich Baby Daddy (feat. Sexyy Red & SZA)` comes back as
+  plain `Drake`. With the web API linked the panel shows the full line,
+  `Drake, Sexyy Red, SZA`. Without it, the first name, as before.
 - **Progress bar** with elapsed and total time, draggable to seek.
 - **Audio meter** driven by Spotify's real output signal, not a canned loop.
 - **Live lyrics** with the running line.
@@ -118,7 +122,8 @@ remembered default: without a choice nobody knows where the track goes. Only
 playlists you can actually write to are offered — `me/playlists` also returns
 every playlist you merely follow, and Spotify answers a write there with 403.
 
-This needs Spotify's web API and a one-time setup:
+This needs Spotify's web API and a one-time setup. The same link also gives
+the panel the complete artist list, which AppleScript does not know:
 
 1. Create an app on [developer.spotify.com](https://developer.spotify.com/dashboard) (free)
 2. Set the redirect URI to exactly `http://127.0.0.1:8888/callback`

@@ -22,7 +22,14 @@ private struct Track: Equatable {
     var spotifyRunning = false
     var isPlaying = false
     var title = ""
+    /// Nur der Hauptinterpret. Bleibt so, weil die Liedtextsuche ihn braucht:
+    /// lrclib fuehrt die Titel unter diesem einen Namen, eine Aufzaehlung
+    /// findet dort nichts.
     var artist = ""
+    /// Alle Interpreten, durch Komma getrennt – sobald sie bekannt sind.
+    /// Der Skriptzugang von Spotify kennt nur den ersten, siehe
+    /// SpotifyWeb.loadArtists.
+    var artists = ""
     var album = ""
     var repeating = false
     var artworkURL = ""
@@ -31,6 +38,9 @@ private struct Track: Equatable {
     var position: TimeInterval = 0     // Sekunden
 
     var hasTrack: Bool { spotifyRunning && !title.isEmpty }
+    /// Fuer die Anzeige. Der Rueckfall auf den ersten Namen greift, solange die
+    /// Besetzung noch unterwegs ist oder gar keine Web-API verbunden ist.
+    var credits: String { artists.isEmpty ? artist : artists }
 }
 
 private enum Spotify {
@@ -100,6 +110,7 @@ private enum Spotify {
                     track.duration = (number(parts[4]) ?? 0) / 1000
                     track.position = number(parts[5]) ?? 0
                     track.uri = parts[6]
+                    track.artists = SpotifyWeb.cachedArtists(for: track.uri) ?? ""
                 }
             }
             DispatchQueue.main.async { completion(track) }
@@ -497,6 +508,73 @@ private enum SpotifyWeb {
     /// gemeinsame. "me/playlists" gibt auch alle gefolgten zurueck – dort
     /// antwortet Spotify beim Hinzufuegen mit 403. Gemessen an einem echten
     /// Konto: 12 von 23 Eintraegen waren fremd.
+    // MARK: Besetzung
+
+    /// Der Skriptzugang von Spotify kennt "artist" nur in der Einzahl und gibt
+    /// dort den ersten Namen zurueck: bei "Rich Baby Daddy (feat. Sexyy Red &
+    /// SZA)" steht da schlicht "Drake", waehrend Spotify selbst "Drake, Sexyy
+    /// Red, SZA" fuehrt. Die ganze Besetzung steht nur in der Web-API. Ohne
+    /// Verbindung bleibt es beim ersten Namen – das ist der alte Zustand, es
+    /// geht also nichts verloren.
+    private static var artistCache: [String: String] = [:]
+    private static var artistPending: Set<String> = []
+    private static var artistTries: [String: Int] = [:]
+    private static let artistLock = NSLock()
+
+    private static func trackID(from uri: String) -> String? {
+        // Nur richtige Titel: eigene Dateien und Podcastfolgen tragen eine
+        // andere Kennung, die dieser Aufruf nicht kennt.
+        let prefix = "spotify:track:"
+        guard uri.hasPrefix(prefix) else { return nil }
+        let id = String(uri.dropFirst(prefix.count))
+        return id.isEmpty ? nil : id
+    }
+
+    /// Aus dem Speicher, ohne Nachfrage – laeuft im Takt des Auslesens mit.
+    static func cachedArtists(for uri: String) -> String? {
+        guard let id = trackID(from: uri) else { return nil }
+        artistLock.lock()
+        defer { artistLock.unlock() }
+        return artistCache[id]
+    }
+
+    /// Fragt die Besetzung einmal je Titel nach. Auch ein einzelner Name wird
+    /// gespeichert, sonst stellte die App dieselbe Frage bei jedem Durchlauf
+    /// neu. Meldet sich nur, wenn wirklich etwas ankommt.
+    static func loadArtists(for uri: String, completion: @escaping (String) -> Void) {
+        guard isLinked, let id = trackID(from: uri) else { return }
+        artistLock.lock()
+        // Nach drei Fehlschlaegen ist Ruhe. Sonst fragte die App, solange der
+        // Titel laeuft, bei jedem Durchlauf neu – ohne Netz alle paar Sekunden.
+        guard artistCache[id] == nil, !artistPending.contains(id),
+              artistTries[id, default: 0] < 3 else {
+            artistLock.unlock()
+            return
+        }
+        artistTries[id, default: 0] += 1
+        artistPending.insert(id)
+        artistLock.unlock()
+        call("tracks/" + id) { result in
+            artistLock.lock()
+            artistPending.remove(id)
+            artistLock.unlock()
+            guard case .success(let data) = result,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let entries = json["artists"] as? [[String: Any]] else { return }
+            let names = entries.compactMap { $0["name"] as? String }
+                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            guard !names.isEmpty else { return }
+            let text = names.joined(separator: ", ")
+            artistLock.lock()
+            // Sonst waechst der Speicher mit jedem gehoerten Titel weiter.
+            if artistCache.count > 200 { artistCache.removeAll(); artistTries.removeAll() }
+            artistCache[id] = text
+            artistTries[id] = nil
+            artistLock.unlock()
+            completion(text)
+        }
+    }
+
     static func loadPlaylists(completion: @escaping (Result<[Playlist], Error>) -> Void) {
         withAccountID { account in
         call("me/playlists?limit=50") { result in
@@ -1952,10 +2030,17 @@ private final class PlayerView: NSView {
             .foregroundColor: primaryColor,
             .shadow: shadow(radius: 3, opacity: 0.9),
         ])
+        // Der Attributtext bringt seinen eigenen Absatzstil mit und ueberging
+        // damit das byTruncatingTail des Feldes: zu lange Zeilen brachen hart
+        // ab, mitten im Wort und ohne Auslassungszeichen. Faellt erst bei
+        // mehreren Interpreten auf, betraf aber auch lange Einzelnamen.
+        let clip = NSMutableParagraphStyle()
+        clip.lineBreakMode = .byTruncatingTail
         artistLabel.attributedStringValue = NSAttributedString(string: subtitle, attributes: [
             .font: NSFont.systemFont(ofSize: 10.5, weight: .regular),
             .foregroundColor: secondaryColor,
             .shadow: shadow(radius: 2.5, opacity: 0.85),
+            .paragraphStyle: clip,
         ])
     }
 
@@ -3074,6 +3159,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let playChanged = new.isPlaying != self.track.isPlaying
             self.track = new
             self.positionAnchor = (new.position, Date())
+            // Die uebrigen Interpreten kommen einen Wimpernschlag spaeter nach
+            // und ersetzen dann den einzelnen Namen. Beim naechsten Durchlauf
+            // stehen sie schon im Speicher, es blitzt also nichts zurueck.
+            if new.artists.isEmpty, new.hasTrack {
+                SpotifyWeb.loadArtists(for: new.uri) { [weak self] names in
+                    guard let self, self.track.uri == new.uri else { return }
+                    self.track.artists = names
+                    self.updateText()
+                }
+            }
             if !wasSame || artworkChanged { self.applyTrack(new, reloadArtwork: artworkChanged) }
             if playChanged { self.syncPollRate() }
             // Spotifys eigenes Wiederholen hat Vorrang; "einzeln" ist unser
@@ -3160,7 +3255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let showsAlbum = view.showsExtras && !track.album.isEmpty
                 && track.album != track.title
             view.setTexts(title: track.title,
-                          subtitle: showsAlbum ? "\(track.artist) · \(track.album)" : track.artist)
+                          subtitle: showsAlbum ? "\(track.credits) · \(track.album)" : track.credits)
             return
         }
         guard !lyricLines.isEmpty else {
@@ -3172,7 +3267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Vor der ersten Zeile und in Instrumentalpausen steht nichts an –
         // dann lieber Titel und Interpret als eine leere Flaeche.
         if current.isEmpty {
-            view.setTexts(title: track.title, subtitle: track.artist)
+            view.setTexts(title: track.title, subtitle: track.credits)
         } else if view.showsLyricPreview && !next.isEmpty {
             // Genug Platz: die naechste Zeile darunter, wie frueher – hier
             // nimmt sie der laufenden nichts weg.
