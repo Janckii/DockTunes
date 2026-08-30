@@ -2076,29 +2076,53 @@ private final class PlayerView: NSView {
     var onArtistClick: ((String) -> Void)?
     var onCoverClick: (() -> Void)?
     private var hoveredArtist: Int?
+    /// Die Zeile ohne Unterstreichung, um sie beim Zeigen nicht jedesmal neu
+    /// aufbauen zu muessen.
+    private var artistBase: NSAttributedString?
+    /// Der eigene Rand des Textfeldes, einmal je Zeile abgefragt statt bei
+    /// jeder Zeigerbewegung.
+    private var artistInset: CGFloat = 0
+    /// Fuer alle Interpretenzeilen derselbe: einmal bauen genuegt.
+    private static let clipStyle: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
+        return style
+    }()
     /// Waagerechte Ausdehnung jedes Namens, einmal je Zeile ausgerechnet.
     /// Beim Bewegen des Zeigers ist dann nur noch zu vergleichen.
     private var artistZones: [(range: NSRange, from: CGFloat, to: CGFloat, uri: String)] = []
 
+    /// Baut die Zeile neu. Nur bei geaendertem Text noetig.
     private func renderArtistLine() {
         // Der Attributtext bringt seinen eigenen Absatzstil mit und ueberging
         // damit das byTruncatingTail des Feldes: zu lange Zeilen brachen hart
         // ab, mitten im Wort und ohne Auslassungszeichen. Faellt erst bei
         // mehreren Interpreten auf, betraf aber auch lange Einzelnamen.
-        let clip = NSMutableParagraphStyle()
-        clip.lineBreakMode = .byTruncatingTail
-        let text = NSMutableAttributedString(string: lastSubtitle ?? "", attributes: [
+        let base = NSAttributedString(string: lastSubtitle ?? "", attributes: [
             .font: NSFont.systemFont(ofSize: 10.5, weight: .regular),
             .foregroundColor: secondaryColor,
             .shadow: shadow(radius: 2.5, opacity: 0.85),
-            .paragraphStyle: clip,
+            .paragraphStyle: Self.clipStyle,
         ])
-        artistLabel.attributedStringValue = text
+        artistBase = base
+        artistLabel.attributedStringValue = base
         rebuildArtistZones()
-        // Der Zeiger kann den Namen nicht anzeigen – den Mauszeiger setzt nur
-        // das Programm im Vordergrund, und das Panel kommt nie dorthin. Die
-        // Unterstreichung ist der Ersatz dafuer.
-        guard let hoveredArtist, hoveredArtist < artistZones.count else { return }
+        applyArtistUnderline()
+    }
+
+    /// Setzt nur die Unterstreichung. Text und Trefferzonen bleiben stehen –
+    /// eine Unterstreichung aendert keine Breite, sie neu auszurechnen waere
+    /// bei jeder ueberfahrenen Grenze eine CoreText-Zeile umsonst.
+    ///
+    /// Der Zeiger selbst kann den Namen nicht anzeigen: den Mauszeiger setzt
+    /// nur das Programm im Vordergrund, und dorthin kommt das Panel nie.
+    private func applyArtistUnderline() {
+        guard let base = artistBase else { return }
+        guard let hoveredArtist, hoveredArtist < artistZones.count else {
+            artistLabel.attributedStringValue = base
+            return
+        }
+        let text = NSMutableAttributedString(attributedString: base)
         text.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue,
                             .foregroundColor: NSColor(calibratedWhite: 1, alpha: 1)],
                            range: artistZones[hoveredArtist].range)
@@ -2107,6 +2131,9 @@ private final class PlayerView: NSView {
 
     private func rebuildArtistZones() {
         artistZones = []
+        // Das Textfeld zeichnet mit einem kleinen eigenen Rand. Der aendert
+        // sich mit dem Text nicht, hier abgefragt genuegt.
+        artistInset = artistLabel.cell?.titleRect(forBounds: artistLabel.bounds).minX ?? 0
         guard !artistLinks.isEmpty else { return }
         let attributed = artistLabel.attributedStringValue
         guard attributed.length > 0 else { return }
@@ -2131,16 +2158,14 @@ private final class PlayerView: NSView {
         guard !artistZones.isEmpty, !artistLabel.isHidden else { return nil }
         let local = convert(point, to: artistLabel)
         guard artistLabel.bounds.contains(local) else { return nil }
-        // Das Textfeld zeichnet mit einem kleinen eigenen Rand.
-        let inset = artistLabel.cell?.titleRect(forBounds: artistLabel.bounds).minX ?? 0
-        let x = local.x - inset
+        let x = local.x - artistInset
         return artistZones.firstIndex { x >= $0.from && x <= $0.to }
     }
 
     private func setHoveredArtist(_ index: Int?) {
         guard index != hoveredArtist else { return }
         hoveredArtist = index
-        renderArtistLine()
+        applyArtistUnderline()
     }
 
     /// Stellt das Glas ein. Die Werte stehen bei applyFill begruendet.
@@ -2754,6 +2779,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let room = max(Self.minWidth, max(roomRight, roomLeft))
         return min(max(width, Self.minWidth), room)
     }
+    /// Ob der Dock ueberhaupt auf Zeigernaehe reagieren kann.
+    ///
+    /// Er aendert seine Groesse nur beim Vergroessern oder beim Ein- und
+    /// Ausfahren. Ist das Ausblenden aus und die Vergroesserung entweder aus
+    /// oder auf dieselbe Groesse gestellt, passiert bei Zeigernaehe nichts –
+    /// dann ist der schnelle Takt reine Verschwendung.
+    ///
+    /// Genau dieser Fall stand auf dem Entwicklungsrechner: Vergroesserung an,
+    /// aber largesize gleich tilesize (beide 38). Der Dock bewegte sich nie,
+    /// die 60 Hz liefen trotzdem, sobald der Zeiger in seine Naehe kam –
+    /// gemessen 3,4 % gegenueber 1,1 % im Ruhezustand.
+    private var dockReactsToPointer = true
+
+    private func refreshDockBehaviour() {
+        let domain = "com.apple.dock" as CFString
+        CFPreferencesAppSynchronize(domain)
+        func number(_ key: String) -> Double? {
+            (CFPreferencesCopyAppValue(key as CFString, domain) as? NSNumber)?.doubleValue
+        }
+        let autohide = (number("autohide") ?? 0) != 0
+        // Ohne largesize greift Apples Vorgabe; dann ist die Vergroesserung echt.
+        let magnifies = (number("magnification") ?? 0) != 0
+            && (number("largesize") ?? 128) > (number("tilesize") ?? 48)
+        let reacts = autohide || magnifies
+        guard reacts != dockReactsToPointer else { return }
+        dockReactsToPointer = reacts
+        if !reacts { setFollowRate(fast: false) }
+        noteFollow(reacts ? "Dock reagiert auf den Zeiger" : "Dock reagiert nicht auf den Zeiger")
+    }
+
     private var spectrumEnabled: Bool { UserDefaults.standard.bool(forKey: "showSpectrum") }
     private let gap: CGFloat = 8
 
@@ -2766,6 +2821,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fastFollowRate = max(4.0, min(120.0, UserDefaults.standard.object(forKey: "followRate") as? Double ?? 60))
         fastFollow = true
         followTimer = schedule(every: 1.0 / fastFollowRate) { [weak self] in self?.followDock() }
+        // Erst nach dem Anlegen des Taktes: refreshDockBehaviour kann ihn
+        // herunterschalten, und setFollowRate schaltet dabei den bestehenden
+        // ab. Stand der Aufruf davor, legte er einen zweiten Takt an, dessen
+        // Kennung die Zeile darunter gleich wieder ueberschrieb – der alte lief
+        // unsichtbar weiter, und der neue blieb bei 60 Hz stehen, weil
+        // fastFollow schon false war. Gemessen 0,8 Prozentpunkte zu viel.
+        refreshDockBehaviour()
         // Fuenfmal je Sekunde genuegt: der Strich wandert bei drei Minuten
         // Spielzeit alle anderthalb Sekunden um einen Punkt, die Sekunden-
         // anzeige springt einmal je Sekunde, und Liedtextzeilen wechseln alle
@@ -2775,7 +2837,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // und die Nachführung der Wiedergabeposition. Ein Abruf kostet 55 ms.
         syncPollRate()
         // Rueckfallebene, falls eine Meldung von Spotify ausbleibt.
-        fullPollTimer = schedule(every: 60) { [weak self] in self?.refreshTrack() }
+        fullPollTimer = schedule(every: 60) { [weak self] in
+            self?.refreshTrack()
+            self?.refreshDockBehaviour()
+        }
+        // Der Dock meldet Aenderungen seiner Einstellungen selbst; der
+        // Minutentakt oben ist nur die Rueckfallebene.
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.dock.prefchanged"),
+            object: nil, queue: .main) { [weak self] _ in self?.refreshDockBehaviour() }
 
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("com.spotify.client.PlaybackStateChanged"),
@@ -3539,15 +3609,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.setTimes(running: Self.clock(displayPosition), total: Self.clock(track.duration))
     }
 
+    /// Verkleinert das Cover auf Anzeigegroesse, bevor es in den Speicher geht.
+    ///
+    /// Spotify liefert 640×640. Im Panel sind es je nach Dock-Groesse 34 bis
+    /// gut 100 Punkte, also hoechstens gut 200 Bildpunkte. Einmal gezeichnet
+    /// haelt NSImage die entpackte Flaeche fest: gut anderthalb Megabyte je
+    /// Bild, bei vierzig gespeicherten also ein Vielfaches dessen, was die
+    /// ganze App sonst braucht. Verkleinert sind es 256 Kilobyte.
+    private static func thumbnail(_ image: NSImage, side: Int = 256) -> NSImage {
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0)
+        else { return image }
+        let box = NSRect(x: 0, y: 0, width: side, height: side)
+        rep.size = box.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        image.draw(in: box)
+        NSGraphicsContext.restoreGraphicsState()
+        let small = NSImage(size: box.size)
+        small.addRepresentation(rep)
+        return small
+    }
+
     private func loadArtwork(_ urlString: String) {
         guard !urlString.isEmpty else { view.cover.image = nil; return }
         if let cached = artworkCache[urlString] { view.cover.image = cached; return }
         guard let url = URL(string: urlString) else { view.cover.image = nil; return }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data, let image = NSImage(data: data) else { return }
+            guard let data, let full = NSImage(data: data) else { return }
             DispatchQueue.main.async {
                 guard let self else { return }
-                if self.artworkCache.count > 40 { self.artworkCache.removeAll() }
+                let image = Self.thumbnail(full)
+                // Vierundzwanzig statt vierzig: verkleinert passen sie leicht,
+                // und mehr Cover haelt eine Hoersitzung selten in Bewegung.
+                if self.artworkCache.count > 24 { self.artworkCache.removeAll() }
                 self.artworkCache[urlString] = image
                 if self.track.artworkURL == urlString { self.view.cover.image = image }
             }
@@ -3598,7 +3696,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // liegt im Beobachtungsband des Docks. Ohne diese Unterscheidung
             // liefe beim Zeigen aufs Panel die volle Rate.
             pointerOnPanel = panel.frame.contains(pointer)
-            pointerNearDock = !pointerOnPanel
+            pointerNearDock = dockReactsToPointer && !pointerOnPanel
                 && lastDockFrame.insetBy(dx: -180, dy: -180).contains(pointer)
             setFollowRate(fast: pointerNearDock)
             // Im langsamen Takt genuegt jeder dritte Blick auf den Dock.
@@ -3719,6 +3817,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Panel sichtbar           : \(panel?.isVisible == true)",
             "Auswahlfenster           : \(picker?.isVisible == true ? "offen mit \(pickerCount) Playlists" : "zu")",
             "Nachfuehren, zuletzt     : \(followLog.isEmpty ? "nichts" : followLog.joined(separator: " | "))",
+            "Dock reagiert auf Zeiger : \(dockReactsToPointer ? "ja" : "nein - schneller Takt aus")",
             "Takt                     : leer=\(lastDockFrame.isNull) beimDock=\(pointerNearDock) aufPanel=\(pointerOnPanel) schnell=\(fastFollow)",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",
             "Zugangs-Ablage           : \(SpotifyWeb.storageCheck())",

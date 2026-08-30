@@ -325,8 +325,23 @@ ist der Durchschnitt über die ganze Laufzeit, nicht der aktuelle Wert.)
 | Liedtext-Modus, spielt | – | 2,5 % | **2,4 %** |
 | spielt, Tonanzeige aus | – | – | **0,3 %** |
 
-Speicher 13–15 MB, über 90 Sekunden unverändert; die einzigen Lecks sind
-9,6 KB in Apples XPC-Schicht.
+Speicher 13–15 MB frisch gestartet und über 90 Sekunden unverändert. Nach
+zehn gehörten Titeln sind es 26 MB statt vorher 34 – siehe die verkleinerten
+Cover unten. Lecks: 9,6 KB in Apples XPC-Schicht, dazu 4 KB in
+LaunchServices, sobald ein Link geöffnet wurde. Beides gehört Apple, im
+eigenen Code steckt keines.
+
+Zwei Werte kommen dazu, die es früher nicht gab. Sie hängen daran, wie weit
+der Zeiger vom Dock entfernt ist, und wurden auf demselben Titel an derselben
+Stelle gemessen, weil die Tonanzeige nur bei sichtbarer Änderung neu zeichnet
+und die Last damit am Musikstück hängt:
+
+| Zustand | vorher | jetzt |
+|---|---|---|
+| Zeiger wandert am Dock entlang | 2,72 % | **0,95 %** |
+| Zeiger wandert über das Panel | 9,7 % | 9,7 % |
+
+Der zweite Wert ist nicht unserer: an ihm hängt eine fremde App. Siehe unten.
 
 Woher die Ersparnis kommt:
 
@@ -340,6 +355,20 @@ Woher die Ersparnis kommt:
   ein- und ausfährt. Sonst genügen fünf Blicke je Sekunde statt sechzig. Die
   Zeigerposition abzufragen kostet nichts, die Bedienungshilfen 0,06 ms – bei
   60 Hz sind das 2 % Dauerlast.
+- **Der schnelle Takt läuft nur, wenn der Dock überhaupt reagieren kann.**
+  Er ändert seine Größe beim Vergrößern und beim Ein- und Ausfahren – sonst
+  nie. Ist das Ausblenden aus und die Vergrößerung entweder aus oder auf
+  dieselbe Größe gestellt, bewirkt Zeigernähe gar nichts, und die 60 Hz sind
+  reine Verschwendung. Genau dieser Fall stand auf dem Entwicklungsrechner:
+  Vergrößerung an, aber `largesize` gleich `tilesize`, beide 38. Gelesen wird
+  das aus `com.apple.dock`, beim Start, einmal je Minute und auf die Meldung
+  `com.apple.dock.prefchanged` hin. Ergebnis 2,72 % → 0,95 %, sobald der
+  Zeiger in die Nähe des Docks kommt – und das tut er ständig, das Beobachtungs-
+  band ist 180 Punkte breit.
+- **Cover werden verkleinert gespeichert.** Spotify liefert 640×640; gezeigt
+  werden sie auf 34 Punkten. Einmal gezeichnet hält `NSImage` die entpackte
+  Fläche fest, gut anderthalb Megabyte je Bild. Jetzt wandern sie als 256×256
+  in den Speicher, 256 KB. Nach zehn Titeln gemessen: 34 MB → 26 MB.
 - **Unsichtbares wird nicht gerechnet.** Zeitleiste und Zeiten erscheinen erst
   beim Hovern; ohne Zeiger auf dem Panel läuft der Takt gar nicht. Die Leiste
   wird nur neu gesetzt, wenn sie sich um mindestens einen Punkt bewegt – bei
@@ -380,6 +409,41 @@ Woher die Ersparnis kommt:
   Stichprobe im Leerlauf zeigte rund 2 ms je Durchlauf und damit den größten
   Posten überhaupt – bei nur fünf Abfragen je Sekunde. Mit gemerkter Liste
   bleiben zwei Abfragen, und der Leerlauf fiel von 2,2 % auf 0,9 %.
+
+### Was nichts brachte
+
+Der Vollständigkeit halber, damit es niemand ein zweites Mal versucht:
+
+- **Zeigerbewegungen abschalten.** Die zehn Prozent, die anfallen, während der
+  Zeiger über das Panel wandert, sind nicht unsere. Mit abgeschalteter
+  Bewegungszustellung waren es 9,88 %, mit eingeschalteter 9,72 % – innerhalb
+  der Streuung dasselbe. `sample` zeigt, wohin sie gehen: 5,6 % der Proben
+  stehen in `_XCopyElementAtPosition`, einer **eingehenden** Anfrage der
+  Bedienungshilfen. Ein anderes Programm fragt bei jeder Zeigerbewegung
+  „welches Element liegt hier?", und AppKits Antwort kostet das. Auf dem
+  Entwicklungsrechner ist DockDoor der wahrscheinliche Fragesteller – es
+  verfolgt den Zeiger am Dock, und dort steht unser Panel.
+- **Die Textfelder aus den Bedienungshilfen nehmen**, um jene Anfragen billiger
+  zu beantworten: 10,88 % mit und ohne. Der Aufwand steckt in AppKits
+  Maschinerie, nicht im Absteigen in unsere Felder. Zurückgenommen – für nichts
+  wollte ich die Bedienungshilfen nicht verschlechtern.
+- **Eigene URLSession ohne HTTP-Zwischenspeicher** für die Cover: 26 MB mit und
+  ohne. Auch zurückgenommen.
+- **Die Meldung von Spotify drosseln.** `PlaybackStateChanged` kam in 25
+  Sekunden laufender Wiedergabe **null**-mal; Spotify meldet nur echte
+  Wechsel. Da ist nichts zu drosseln.
+
+### Eine Falle beim Umbau
+
+`setFollowRate` schaltet den bestehenden Takt ab und legt einen neuen an. Wird
+es aufgerufen, **bevor** der Takt überhaupt existiert, läuft es ins Leere: der
+neu angelegte Takt wird von der nächsten Zeile überschrieben, ohne abgeschaltet
+zu werden, und läuft unsichtbar weiter. Schlimmer noch stand `fastFollow`
+danach auf `false`, während der sichtbare Takt mit 60 Hz lief – die Prüfung
+`guard fast != fastFollow` schaltete ihn nie herunter. Kostenpunkt 0,8
+Prozentpunkte im Leerlauf, gefunden nur, weil die Fassung nach dem Optimieren
+**schlechter** maß als vorher. Deshalb wird jede Änderung hier gegen die
+vorherige gemessen, auf demselben Titel an derselben Stelle.
 - **Der Dock-Prozess wird nicht mehr gesucht.** Ihn alle zwei Sekunden in der
   Prozessliste zu finden war im Leerlauf der größte verbliebene Posten – eine
   Stichprobe zeigte den Löwenanteil der Ruhelast genau dort. Er wechselt aber

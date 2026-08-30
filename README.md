@@ -50,8 +50,14 @@
   | lyrics mode, playing | 2.4 % | 14 MB |
   | playing, audio meter off | 0.3 % | 13 MB |
 
-  Memory is flat over time and the only leaks are 9.6 KB inside Apple's XPC
-  layer.
+  Memory is flat over time and the only leaks are inside Apple's own XPC and
+  LaunchServices layers — 14 KB after heavy use, none in our code. Covers are
+  stored downscaled, so a long listening session stays at 26 MB rather than 34.
+
+  The 60 Hz Dock tracking only runs when the Dock can actually react to the
+  pointer — it cannot if hiding is off and magnification is off or set to the
+  same size. Walking the pointer past the Dock then costs 0.95 % instead of
+  2.72 %.
 
 ## Screenshots
 
