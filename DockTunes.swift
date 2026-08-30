@@ -1855,6 +1855,13 @@ private final class PlayerView: NSView {
             onArtistClick?(artistZones[index].uri)
             return
         }
+        // Das Cover fuehrt zum Titel selbst, alles uebrige holt nur Spotify
+        // nach vorn. Im Liedtext-Modus ist es null Punkte breit, dann trifft
+        // die Pruefung ohnehin nie.
+        if cover.bounds.contains(cover.convert(point, from: self)) {
+            onCoverClick?()
+            return
+        }
         onClick?()
     }
 
@@ -2067,6 +2074,7 @@ private final class PlayerView: NSView {
         }
     }
     var onArtistClick: ((String) -> Void)?
+    var onCoverClick: (() -> Void)?
     private var hoveredArtist: Int?
     /// Waagerechte Ausdehnung jedes Namens, einmal je Zeile ausgerechnet.
     /// Beim Bewegen des Zeigers ist dann nur noch zu vergleichen.
@@ -2825,6 +2833,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addButton.action = #selector(addToPlaylist)
         view.onClick = { [weak self] in self?.openSpotify() }
         view.onArtistClick = { [weak self] uri in self?.openArtist(uri) }
+        view.onCoverClick = { [weak self] in self?.openTrack() }
         view.onTextChange = { [weak self] in
             guard let self else { return }
             // Breite haengt am Text – Position neu bestimmen lassen
@@ -3043,6 +3052,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Oeffnet den Interpreten in Spotify. Der Aufruf holt die App selbst nach
     /// vorn, ein zusaetzliches Aktivieren waere doppelt.
+    /// Blaettert in Spotify zur Seite des laufenden Titels. Nachgemessen: der
+    /// Aufruf startet nichts – die Wiedergabe laeuft unveraendert weiter, es
+    /// wechselt nur die Ansicht.
+    ///
+    /// Eigene Dateien tragen eine andere Kennung, zu der es keine Seite gibt;
+    /// dort bleibt es beim blossen Nach-vorn-Holen.
+    private func openTrack() {
+        guard track.uri.hasPrefix("spotify:track:"), let url = URL(string: track.uri) else {
+            openSpotify()
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
     private func openArtist(_ uri: String) {
         guard let url = URL(string: uri) else { return }
         NSWorkspace.shared.open(url)

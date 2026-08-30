@@ -50,8 +50,9 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 
 | Aktion | Wirkung |
 |---|---|
-| Klick auf Cover oder Titel | Spotify in den Vordergrund holen |
+| Klick auf das Cover | den Titel in Spotify öffnen |
 | Klick auf einen Interpreten | dessen Seite in Spotify öffnen |
+| Klick sonst auf das Panel | Spotify in den Vordergrund holen |
 | Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
@@ -65,7 +66,11 @@ Einzahl und gibt dort den ersten Namen zurück. Bei *Rich Baby Daddy (feat.
 Sexyy Red & SZA)* steht dort schlicht `Drake`, während Spotify selbst `Drake,
 Sexyy Red, SZA` führt. Ohne Verbindung bleibt es beim ersten Namen.
 
-Jeder Name ist anklickbar und öffnet die Seite des Interpreten in Spotify.
+Das Cover führt zum Titel selbst, jeder Name zur Seite des Interpreten.
+Beides rührt die Wiedergabe nicht an – nachgemessen: beim Öffnen des Titels
+lief der Song ungestört von 0:26 auf 0:47 weiter, Spotify wechselte nur die
+Ansicht. Bei eigenen Dateien gibt es keine solche Seite; dort bleibt es beim
+blossen Nach-vorn-Holen.
 Welcher gerade unter dem Zeiger liegt, zeigt eine Unterstreichung. Eine
 Zeigerhand gibt es nicht: den Mauszeiger vergibt nur die Anwendung im
 Vordergrund, und dorthin kommt das Panel nie – dasselbe Hindernis wie beim

@@ -28,6 +28,8 @@
   reports one name — `Rich Baby Daddy (feat. Sexyy Red & SZA)` comes back as
   plain `Drake`. With the web API linked the panel shows the full line,
   `Drake, Sexyy Red, SZA`. Without it, the first name, as before.
+- **The cover opens the track**, each artist opens their page in Spotify.
+  Neither disturbs playback — Spotify only changes what it shows.
 - **Each artist is clickable** and opens their page in Spotify. The one under
   the pointer is underlined — there is no pointing-hand cursor, because only
   the frontmost application may set the cursor and the panel never comes
@@ -106,8 +108,9 @@ the prompt entirely.
 
 | Action | Effect |
 |---|---|
-| Click the cover or the title | Bring Spotify to the front |
+| Click the cover | Open the track in Spotify |
 | Click an artist | Open that artist in Spotify |
+| Click anywhere else on the panel | Bring Spotify to the front |
 | Transport buttons | Previous, play/pause, next |
 | Repeat button | Off → repeat all → repeat one → off |
 | Plus button | Open the playlist picker |
