@@ -18,6 +18,12 @@ func t(_ de: String, _ en: String) -> String {
 
 // MARK: - Spotify-Anbindung
 
+/// Ein Interpret mit seiner Spotify-Kennung, damit sein Name anklickbar ist.
+struct ArtistLink: Equatable {
+    let name: String
+    let uri: String
+}
+
 private struct Track: Equatable {
     var spotifyRunning = false
     var isPlaying = false
@@ -30,6 +36,9 @@ private struct Track: Equatable {
     /// Der Skriptzugang von Spotify kennt nur den ersten, siehe
     /// SpotifyWeb.loadArtists.
     var artists = ""
+    /// Dieselben Namen einzeln, mit Kennung: nur damit laesst sich einer
+    /// anklicken. Ohne Web-Verbindung bleibt die Liste leer.
+    var artistLinks: [ArtistLink] = []
     var album = ""
     var repeating = false
     var artworkURL = ""
@@ -110,7 +119,8 @@ private enum Spotify {
                     track.duration = (number(parts[4]) ?? 0) / 1000
                     track.position = number(parts[5]) ?? 0
                     track.uri = parts[6]
-                    track.artists = SpotifyWeb.cachedArtists(for: track.uri) ?? ""
+                    track.artistLinks = SpotifyWeb.cachedArtists(for: track.uri) ?? []
+                    track.artists = track.artistLinks.map(\.name).joined(separator: ", ")
                 }
             }
             DispatchQueue.main.async { completion(track) }
@@ -516,7 +526,7 @@ private enum SpotifyWeb {
     /// Red, SZA" fuehrt. Die ganze Besetzung steht nur in der Web-API. Ohne
     /// Verbindung bleibt es beim ersten Namen – das ist der alte Zustand, es
     /// geht also nichts verloren.
-    private static var artistCache: [String: String] = [:]
+    private static var artistCache: [String: [ArtistLink]] = [:]
     private static var artistPending: Set<String> = []
     private static var artistTries: [String: Int] = [:]
     private static let artistLock = NSLock()
@@ -531,7 +541,7 @@ private enum SpotifyWeb {
     }
 
     /// Aus dem Speicher, ohne Nachfrage – laeuft im Takt des Auslesens mit.
-    static func cachedArtists(for uri: String) -> String? {
+    static func cachedArtists(for uri: String) -> [ArtistLink]? {
         guard let id = trackID(from: uri) else { return nil }
         artistLock.lock()
         defer { artistLock.unlock() }
@@ -541,7 +551,7 @@ private enum SpotifyWeb {
     /// Fragt die Besetzung einmal je Titel nach. Auch ein einzelner Name wird
     /// gespeichert, sonst stellte die App dieselbe Frage bei jedem Durchlauf
     /// neu. Meldet sich nur, wenn wirklich etwas ankommt.
-    static func loadArtists(for uri: String, completion: @escaping (String) -> Void) {
+    static func loadArtists(for uri: String, completion: @escaping ([ArtistLink]) -> Void) {
         guard isLinked, let id = trackID(from: uri) else { return }
         artistLock.lock()
         // Nach drei Fehlschlaegen ist Ruhe. Sonst fragte die App, solange der
@@ -561,17 +571,20 @@ private enum SpotifyWeb {
             guard case .success(let data) = result,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let entries = json["artists"] as? [[String: Any]] else { return }
-            let names = entries.compactMap { $0["name"] as? String }
-                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            guard !names.isEmpty else { return }
-            let text = names.joined(separator: ", ")
+            let links: [ArtistLink] = entries.compactMap { entry in
+                guard let name = entry["name"] as? String,
+                      !name.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+                // Ohne Kennung bleibt der Name stehen, nur eben ohne Verweis.
+                return ArtistLink(name: name, uri: entry["uri"] as? String ?? "")
+            }
+            guard !links.isEmpty else { return }
             artistLock.lock()
             // Sonst waechst der Speicher mit jedem gehoerten Titel weiter.
             if artistCache.count > 200 { artistCache.removeAll(); artistTries.removeAll() }
-            artistCache[id] = text
+            artistCache[id] = links
             artistTries[id] = nil
             artistLock.unlock()
-            completion(text)
+            completion(links)
         }
     }
 
@@ -1834,7 +1847,16 @@ private final class PlayerView: NSView {
     }
 
     /// Die Kanten zieht der Fenster-Server selbst; siehe PlayerPanel.
-    override func mouseDown(with event: NSEvent) { onClick?() }
+    override func mouseDown(with event: NSEvent) {
+        // Trifft der Klick einen Interpreten, oeffnet der sich; sonst bleibt es
+        // beim alten Verhalten und Spotify kommt nach vorn.
+        let point = convert(event.locationInWindow, from: nil)
+        if let index = artistZone(at: point) {
+            onArtistClick?(artistZones[index].uri)
+            return
+        }
+        onClick?()
+    }
 
     /// Das Menue wird bei jedem Rechtsklick neu gebaut. Beim Start steht die
     /// Dock-Geometrie noch nicht fest, und davon haengt ab, welche Breiten
@@ -2030,18 +2052,87 @@ private final class PlayerView: NSView {
             .foregroundColor: primaryColor,
             .shadow: shadow(radius: 3, opacity: 0.9),
         ])
+        renderArtistLine()
+    }
+
+    // MARK: Anklickbare Interpreten
+
+    /// Die Namen der Unterzeile mit ihrer Kennung. Leer, wenn dort etwas
+    /// anderes steht – eine Liedzeile etwa – oder ohne Web-Verbindung.
+    var artistLinks: [ArtistLink] = [] {
+        didSet {
+            guard artistLinks != oldValue else { return }
+            hoveredArtist = nil
+            renderArtistLine()
+        }
+    }
+    var onArtistClick: ((String) -> Void)?
+    private var hoveredArtist: Int?
+    /// Waagerechte Ausdehnung jedes Namens, einmal je Zeile ausgerechnet.
+    /// Beim Bewegen des Zeigers ist dann nur noch zu vergleichen.
+    private var artistZones: [(range: NSRange, from: CGFloat, to: CGFloat, uri: String)] = []
+
+    private func renderArtistLine() {
         // Der Attributtext bringt seinen eigenen Absatzstil mit und ueberging
         // damit das byTruncatingTail des Feldes: zu lange Zeilen brachen hart
         // ab, mitten im Wort und ohne Auslassungszeichen. Faellt erst bei
         // mehreren Interpreten auf, betraf aber auch lange Einzelnamen.
         let clip = NSMutableParagraphStyle()
         clip.lineBreakMode = .byTruncatingTail
-        artistLabel.attributedStringValue = NSAttributedString(string: subtitle, attributes: [
+        let text = NSMutableAttributedString(string: lastSubtitle ?? "", attributes: [
             .font: NSFont.systemFont(ofSize: 10.5, weight: .regular),
             .foregroundColor: secondaryColor,
             .shadow: shadow(radius: 2.5, opacity: 0.85),
             .paragraphStyle: clip,
         ])
+        artistLabel.attributedStringValue = text
+        rebuildArtistZones()
+        // Der Zeiger kann den Namen nicht anzeigen – den Mauszeiger setzt nur
+        // das Programm im Vordergrund, und das Panel kommt nie dorthin. Die
+        // Unterstreichung ist der Ersatz dafuer.
+        guard let hoveredArtist, hoveredArtist < artistZones.count else { return }
+        text.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue,
+                            .foregroundColor: NSColor(calibratedWhite: 1, alpha: 1)],
+                           range: artistZones[hoveredArtist].range)
+        artistLabel.attributedStringValue = text
+    }
+
+    private func rebuildArtistZones() {
+        artistZones = []
+        guard !artistLinks.isEmpty else { return }
+        let attributed = artistLabel.attributedStringValue
+        guard attributed.length > 0 else { return }
+        let whole = attributed.string as NSString
+        let line = CTLineCreateWithAttributedString(attributed)
+        var from = 0
+        for link in artistLinks where !link.uri.isEmpty {
+            // Der Reihe nach suchen: bei "Sexyy Red" und "Red" in derselben
+            // Zeile faende eine freie Suche sonst zweimal dieselbe Stelle.
+            let found = whole.range(of: link.name,
+                                    range: NSRange(location: from, length: whole.length - from))
+            guard found.location != NSNotFound else { continue }
+            from = found.location + found.length
+            let a = CTLineGetOffsetForStringIndex(line, found.location, nil)
+            let b = CTLineGetOffsetForStringIndex(line, from, nil)
+            artistZones.append((found, min(a, b), max(a, b), link.uri))
+        }
+    }
+
+    /// Welcher Name liegt unter diesem Punkt der Ansicht?
+    private func artistZone(at point: CGPoint) -> Int? {
+        guard !artistZones.isEmpty, !artistLabel.isHidden else { return nil }
+        let local = convert(point, to: artistLabel)
+        guard artistLabel.bounds.contains(local) else { return nil }
+        // Das Textfeld zeichnet mit einem kleinen eigenen Rand.
+        let inset = artistLabel.cell?.titleRect(forBounds: artistLabel.bounds).minX ?? 0
+        let x = local.x - inset
+        return artistZones.firstIndex { x >= $0.from && x <= $0.to }
+    }
+
+    private func setHoveredArtist(_ index: Int?) {
+        guard index != hoveredArtist else { return }
+        hoveredArtist = index
+        renderArtistLine()
     }
 
     /// Stellt das Glas ein. Die Werte stehen bei applyFill begruendet.
@@ -2199,7 +2290,8 @@ private final class PlayerView: NSView {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
         let area = NSTrackingArea(rect: bounds,
-                                  options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  options: [.mouseEnteredAndExited, .mouseMoved,
+                                            .activeAlways, .inVisibleRect],
                                   owner: self, userInfo: nil)
         addTrackingArea(area)
         tracking = area
@@ -2214,7 +2306,15 @@ private final class PlayerView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) { setHovering(true) }
-    override func mouseExited(with event: NSEvent) { setHovering(false) }
+    override func mouseExited(with event: NSEvent) {
+        setHovering(false)
+        setHoveredArtist(nil)
+    }
+    /// Kommt nur, solange der Zeiger auf dem Panel steht, und faellt sofort
+    /// wieder aus. Gezeichnet wird nur, wenn ein anderer Name darunter liegt.
+    override func mouseMoved(with event: NSEvent) {
+        setHoveredArtist(artistZone(at: convert(event.locationInWindow, from: nil)))
+    }
 
     /// Blendet die Leiste unabhaengig vom Zeigen ein – fuer die Lautstaerke.
     func forceProgressVisible(_ visible: Bool) {
@@ -2702,6 +2802,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)))
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.isMovable = false
+        // Ohne das kommen ueber die Beobachtungszone zwar Eintreten und
+        // Verlassen an, aber keine Bewegung - und damit wuesste das Panel nie,
+        // ueber welchem Interpreten der Zeiger gerade steht.
+        panel.acceptsMouseMovedEvents = true
         panel.hidesOnDeactivate = false
         panel.appearance = nil           // folgt der Systemdarstellung, hell wie dunkel
 
@@ -2720,6 +2824,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addButton.target = self
         view.addButton.action = #selector(addToPlaylist)
         view.onClick = { [weak self] in self?.openSpotify() }
+        view.onArtistClick = { [weak self] uri in self?.openArtist(uri) }
         view.onTextChange = { [weak self] in
             guard let self else { return }
             // Breite haengt am Text – Position neu bestimmen lassen
@@ -2935,6 +3040,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSpotify() { Spotify.activate() }
+
+    /// Oeffnet den Interpreten in Spotify. Der Aufruf holt die App selbst nach
+    /// vorn, ein zusaetzliches Aktivieren waere doppelt.
+    private func openArtist(_ uri: String) {
+        guard let url = URL(string: uri) else { return }
+        NSWorkspace.shared.open(url)
+    }
 
     // MARK: Playlists
 
@@ -3163,9 +3275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // und ersetzen dann den einzelnen Namen. Beim naechsten Durchlauf
             // stehen sie schon im Speicher, es blitzt also nichts zurueck.
             if new.artists.isEmpty, new.hasTrack {
-                SpotifyWeb.loadArtists(for: new.uri) { [weak self] names in
+                SpotifyWeb.loadArtists(for: new.uri) { [weak self] links in
                     guard let self, self.track.uri == new.uri else { return }
-                    self.track.artists = names
+                    self.track.artistLinks = links
+                    self.track.artists = links.map(\.name).joined(separator: ", ")
                     self.updateText()
                 }
             }
@@ -3254,11 +3367,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Zeile nur abgeschnitten.
             let showsAlbum = view.showsExtras && !track.album.isEmpty
                 && track.album != track.title
+            // Vor setTexts: die Zeile wird dort gezeichnet, und dabei werden
+            // die anklickbaren Stellen gleich mit ausgerechnet.
+            view.artistLinks = track.artistLinks
             view.setTexts(title: track.title,
                           subtitle: showsAlbum ? "\(track.credits) · \(track.album)" : track.credits)
             return
         }
         guard !lyricLines.isEmpty else {
+            view.artistLinks = []
             view.setTexts(title: track.title,
                           subtitle: lyricsTrackURI.isEmpty ? "" : t("kein Liedtext gefunden", "no lyrics found"))
             return
@@ -3267,12 +3384,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Vor der ersten Zeile und in Instrumentalpausen steht nichts an –
         // dann lieber Titel und Interpret als eine leere Flaeche.
         if current.isEmpty {
+            view.artistLinks = track.artistLinks
             view.setTexts(title: track.title, subtitle: track.credits)
         } else if view.showsLyricPreview && !next.isEmpty {
+            // In der Unterzeile steht jetzt Liedtext, kein Interpret.
+            view.artistLinks = []
             // Genug Platz: die naechste Zeile darunter, wie frueher – hier
             // nimmt sie der laufenden nichts weg.
             view.setTexts(title: current, subtitle: next)
         } else {
+            view.artistLinks = []
             view.setLyricLine(current)
         }
     }

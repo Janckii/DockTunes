@@ -50,7 +50,8 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 
 | Aktion | Wirkung |
 |---|---|
-| Klick auf Cover oder Text | Spotify in den Vordergrund holen |
+| Klick auf Cover oder Titel | Spotify in den Vordergrund holen |
+| Klick auf einen Interpreten | dessen Seite in Spotify öffnen |
 | Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
@@ -63,6 +64,12 @@ verbundener Web-Schnittstelle: Spotifys Skriptzugang kennt `artist` bloß in der
 Einzahl und gibt dort den ersten Namen zurück. Bei *Rich Baby Daddy (feat.
 Sexyy Red & SZA)* steht dort schlicht `Drake`, während Spotify selbst `Drake,
 Sexyy Red, SZA` führt. Ohne Verbindung bleibt es beim ersten Namen.
+
+Jeder Name ist anklickbar und öffnet die Seite des Interpreten in Spotify.
+Welcher gerade unter dem Zeiger liegt, zeigt eine Unterstreichung. Eine
+Zeigerhand gibt es nicht: den Mauszeiger vergibt nur die Anwendung im
+Vordergrund, und dorthin kommt das Panel nie – dasselbe Hindernis wie beim
+Größenziehen, siehe unten.
 
 Nachgefragt wird höchstens einmal je Titel, das Ergebnis bleibt gespeichert –
 auch ein einzelner Name, sonst stellte die App dieselbe Frage bei jedem
@@ -526,8 +533,13 @@ zehnmal je Sekunde nachgesetzt, für die ganze Panelfläche, per
 `.cursorUpdate`-Zone, per `.mouseMoved`-Zone, auf `.floating` statt Dock-Ebene,
 und mit aktivierter App. Den Zeiger vergibt die aktive Anwendung, und DockTunes
 aktiviert sich nie – Klicks aufs Panel sollen den Fokus nicht stehlen.
-`mouseEntered` erreicht ein Fenster ohne Fokus noch, `mouseMoved` und
-`cursorUpdate` nicht mehr.
+`mouseEntered` erreicht ein Fenster ohne Fokus noch, `cursorUpdate` nicht mehr.
+
+Nachtrag: `mouseMoved` stand hier ebenfalls als unerreichbar – das war falsch.
+Die Zone braucht nur die Angabe `.mouseMoved`, und das Fenster muss
+`acceptsMouseMovedEvents` gesetzt haben; dann kommen die Bewegungen auch ohne
+Fokus an. Genau darauf sitzt jetzt die Unterstreichung der Interpreten. Am
+Zeiger ändert das nichts: den vergibt weiterhin nur die aktive Anwendung.
 
 Die vier Stufen im Menü tun dasselbe mit weniger Umstand.
 

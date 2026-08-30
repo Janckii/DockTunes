@@ -28,6 +28,10 @@
   reports one name — `Rich Baby Daddy (feat. Sexyy Red & SZA)` comes back as
   plain `Drake`. With the web API linked the panel shows the full line,
   `Drake, Sexyy Red, SZA`. Without it, the first name, as before.
+- **Each artist is clickable** and opens their page in Spotify. The one under
+  the pointer is underlined — there is no pointing-hand cursor, because only
+  the frontmost application may set the cursor and the panel never comes
+  forward.
 - **Progress bar** with elapsed and total time, draggable to seek.
 - **Audio meter** driven by Spotify's real output signal, not a canned loop.
 - **Live lyrics** with the running line.
@@ -102,7 +106,8 @@ the prompt entirely.
 
 | Action | Effect |
 |---|---|
-| Click the cover or the text | Bring Spotify to the front |
+| Click the cover or the title | Bring Spotify to the front |
+| Click an artist | Open that artist in Spotify |
 | Transport buttons | Previous, play/pause, next |
 | Repeat button | Off → repeat all → repeat one → off |
 | Plus button | Open the playlist picker |
