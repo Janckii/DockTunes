@@ -2407,7 +2407,7 @@ private final class PlayerView: NSView {
     override func mouseExited(with event: NSEvent) {
         setHovering(false)
         setHoveredArtist(nil)
-        setArtistPaused(false)
+        setMarqueesPaused(false)
     }
     /// Kommt nur, solange der Zeiger auf dem Panel steht, und faellt sofort
     /// wieder aus. Gezeichnet wird nur, wenn ein anderer Name darunter liegt.
@@ -2416,7 +2416,7 @@ private final class PlayerView: NSView {
         // Anhalten, sobald der Zeiger auf der Zeile steht – nicht erst auf
         // einem Namen. Sonst muesste man einen wandernden Namen treffen, um
         // ihn zum Stehen zu bringen.
-        setArtistPaused(!artistClip.isHidden
+        setMarqueesPaused(!artistClip.isHidden
                         && artistClip.bounds.contains(convert(point, to: artistClip)))
         setHoveredArtist(artistZone(at: point))
     }
@@ -2637,25 +2637,32 @@ private final class PlayerView: NSView {
         CATransaction.commit()
     }
 
-    /// Haelt die Interpretenzeile an, solange der Zeiger darauf steht. Der
-    /// Titel darueber laeuft weiter.
+    /// Haelt beide Baender an, solange der Zeiger auf der Interpretenzeile
+    /// steht.
     ///
-    /// Beim Loslassen faengt nicht nur sie wieder an, sondern beide gemeinsam
-    /// von vorn. Liesse man sie einfach weiterlaufen, laege sie danach genau um
-    /// die Standzeit hinter dem Titel – und der gemeinsame Takt waere dahin.
-    /// Einmal sichtbar zurueckgesetzt ist besser als dauerhaft versetzt; der
-    /// Neuanfang beginnt mit der Standpause, wirkt also nicht wie ein Ruckeln.
-    private func setArtistPaused(_ paused: Bool) {
-        guard artistScrolls, paused != marqueesPaused else { return }
+    /// Beide, nicht nur das untere: sie laufen im selben Takt, und eines allein
+    /// anzuhalten wuerde sie um die Standzeit auseinanderbringen – also gerade
+    /// das wiederherstellen, was der gemeinsame Takt beseitigt. So bleiben sie
+    /// beisammen, und es gibt nie einen Ruecksprung: sie stehen dort, wo sie
+    /// waren, und laufen von dort weiter.
+    private func setMarqueesPaused(_ paused: Bool) {
+        guard titleScrolls || artistScrolls, paused != marqueesPaused else { return }
         marqueesPaused = paused
-        guard paused else {
-            marqueeCycleKey = ""
-            syncMarquees()
-            return
+        for layer in [marquee, artistMarquee] {
+            if paused {
+                let now = layer.convertTime(CACurrentMediaTime(), from: nil)
+                layer.speed = 0
+                layer.timeOffset = now
+            } else {
+                // Die Standzeit aus der Ebenenzeit herausrechnen, sonst spraenge
+                // das Band um genau diese Spanne nach vorn.
+                let stopped = layer.timeOffset
+                layer.speed = 1
+                layer.timeOffset = 0
+                layer.beginTime = 0
+                layer.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) - stopped
+            }
         }
-        let now = artistMarquee.convertTime(CACurrentMediaTime(), from: nil)
-        artistMarquee.speed = 0
-        artistMarquee.timeOffset = now
     }
 
     /// Mindestplatz fuer den Titel. Darunter waere er nur noch ein hastig

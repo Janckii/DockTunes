@@ -52,7 +52,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 |---|---|
 | Klick auf das Cover | den Titel in Spotify öffnen |
 | Klick auf einen Interpreten | dessen Seite in Spotify öffnen |
-| Zeiger auf der Interpretenzeile | hält deren Lauftext an, solange er dort steht; der Titel läuft weiter |
+| Zeiger auf der Interpretenzeile | hält beide Lauftexte an, solange er dort steht |
 | Klick sonst auf das Panel | Spotify in den Vordergrund holen |
 | Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
@@ -740,17 +740,20 @@ gleich lang.
 
 Zwei Dinge kommen dazu, die der Titel nicht braucht:
 
-- **Der Zeiger hält das Band an.** Sonst müsste man einen wandernden Namen
+- **Der Zeiger hält beide Bänder an.** Sonst müsste man einen wandernden Namen
   treffen. Angehalten wird, sobald der Zeiger auf der Zeile steht, nicht erst
   auf einem Namen – sonst wäre das Anhalten selbst ein Treffer, den man erst
   landen müsste. Technisch über `speed = 0` und einen festgehaltenen
-  `timeOffset` der Ebene; der Titel darüber läuft dabei weiter.
+  `timeOffset` der Ebene.
 
-  Beim Loslassen fangen **beide** gemeinsam von vorn an. Liesse man die
-  Interpretenzeile einfach weiterlaufen, läge sie danach genau um die Standzeit
-  hinter dem Titel, und der gemeinsame Takt wäre dahin. Einmal sichtbar
-  zurückgesetzt ist besser als dauerhaft versetzt – und der Neuanfang beginnt
-  mit der Standpause, wirkt also nicht wie ein Ruckeln.
+  **Beide**, nicht nur die untere: eines allein anzuhalten brächte sie um die
+  Standzeit auseinander und stellte genau das wieder her, was der gemeinsame
+  Takt beseitigt. So bleiben sie beisammen, und es gibt nie einen Rücksprung –
+  sie stehen, wo sie waren, und laufen von dort weiter. Beim Fortsetzen wird
+  die Standzeit aus der Ebenenzeit herausgerechnet, sonst spränge das Band um
+  genau diese Spanne nach vorn. Gemessen: mit Zeiger auf der Zeile beide 0
+  Punkte, danach Titel 26 und Interpreten 15 Punkte je Aufnahme – Verhältnis
+  1,75 wie die Bandlängen, der Gleichlauf übersteht das Anhalten also.
 - **Die Trefferzonen rechnen den Versatz mit.** Sie stehen in Textkoordinaten;
   gefragt ist die Stelle im Text, nicht im Fenster. Die tatsächliche Lage des
   Bandes steht in der **Darstellungsebene** (`presentation()`) – die

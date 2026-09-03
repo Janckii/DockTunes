@@ -34,9 +34,9 @@
   Neither disturbs playback — Spotify only changes what it shows.
 - **Each artist is clickable** and opens their page in Spotify. With several
   artists the line usually does not fit, so it scrolls like the title, in the
-  same cycle — both stand still together and set off together. It stops as soon
-  as the pointer rests on it, so a name can be clicked in peace; the title keeps
-  running, and when you move away both start over together. The one under
+  same cycle — both stand still together and set off together. Resting the
+  pointer on the line stops both, so a name can be clicked in peace; they carry
+  on from where they stood, never jumping. The one under
   the pointer is underlined — there is no pointing-hand cursor, because only
   the frontmost application may set the cursor and the panel never comes
   forward.
@@ -124,7 +124,7 @@ the prompt entirely.
 |---|---|
 | Click the cover | Open the track in Spotify |
 | Click an artist | Open that artist in Spotify |
-| Pointer on the artist line | Pauses its scrolling while it rests there; the title keeps going |
+| Pointer on the artist line | Pauses both scrolling lines while it rests there |
 | Click anywhere else on the panel | Bring Spotify to the front |
 | Transport buttons | Previous, play/pause, next |
 | Repeat button | Off → repeat all → repeat one → off |
