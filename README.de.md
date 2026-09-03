@@ -57,7 +57,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
 | Zeiger auf dem Panel | Zeitleiste mit laufender und gesamter Spielzeit |
 | Ziehen auf der Zeitleiste | im Song vor- und zurückspringen |
-| Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie 1,4 s lang an – auch im Liedtext-Modus, dort pausiert der Text so lange |
+| Scrollen über dem Panel | Lautstärke in Fünferschritten; die Zeitleiste zeigt sie 1,4 s lang an – auch im Liedtext-Modus, dort pausiert der Text so lange. Nach oben ist lauter, unabhängig von der Systemeinstellung für die Scrollrichtung |
 | Rechtsklick | Menü mit allen Einstellungen |
 
 Unter dem Titel stehen alle Interpreten, nicht nur der erste. Das geht nur mit
@@ -263,6 +263,7 @@ Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
 
 ```bash
 defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
+defaults write de.jancko.docktunes volumeScrollPoints -float 4   # Wischweg je Lautstärkepunkt (Vorgabe 6)
 defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
 defaults write de.jancko.docktunes rimAlpha -float 0.30   # Stärke der Lichtkante
 defaults write de.jancko.docktunes shadowStrength -float 0.6 # Schatten, 0 = aus
@@ -649,6 +650,49 @@ Fokus an. Genau darauf sitzt jetzt die Unterstreichung der Interpreten. Am
 Zeiger ändert das nichts: den vergibt weiterhin nur die aktive Anwendung.
 
 Die vier Stufen im Menü tun dasselbe mit weniger Umstand.
+
+## Lautstärke am Trackpad
+
+Ein Mausrad rastet, ein Trackpad nicht: es liefert einen Strom kleiner Werte,
+und das System schiebt nach dem Abheben der Finger noch einen abklingenden
+Schwanz hinterher. Für eine Liste, die ausrollen soll, ist das richtig; für
+einen Regler ist es falsch. An einer nachgebauten Geste gemessen (Beginn,
+Bewegung, Ende, Nachlauf – posted als `CGEvent` mit gesetzten Phasenfeldern):
+
+| | vorher | jetzt |
+|---|---|---|
+| ein mittlerer Wisch nach oben | 69 → 100, also über den ganzen Rest | +11 bis +15 |
+| ein kräftiger Wisch | am Anschlag | +35 |
+| Ereignisse nach dem Loslassen | 13 wurden mitgerechnet | keins |
+
+Drei Dinge waren zu ändern:
+
+- **Der Nachlauf zählt nicht mehr mit** (`momentumPhase` leer). Die Lautstärke
+  bleibt stehen, wo der Finger sie gelassen hat.
+- **Jede Geste fängt bei null an.** Ein angefangener Wisch, der die Schwelle
+  nicht erreicht hat, zählte sonst beim nächsten mit – der erste Schritt kam
+  zu früh oder ging in die falsche Richtung.
+- **Sechs Punkte Wischweg je Lautstärkepunkt** statt anderthalb. Ein mittlerer
+  Wisch bringt rund 150 Punkte zusammen und bewegt den Regler damit um etwa 25.
+
+Dazu zwei Kleinigkeiten. **Nach oben ist lauter**, auch wenn im System die
+natürliche Scrollrichtung eingestellt ist (`isDirectionInvertedFromDevice`):
+ein Regler folgt der Hand, nicht der Einstellung für Textfenster. Und die
+Aufrufe an Spotify werden gedrosselt – der erste sofort, danach höchstens alle
+70 ms und der letzte Wert immer. Sie laufen seriell in einer Warteschlange, und
+Spotify sieht ohnehin nur den Endwert.
+
+Zu Beginn jeder Geste wird der gemerkte Wert einmal bei Spotify nachgefragt.
+Beim Zeigen geschieht das ohnehin; bleibt der Zeiger aber liegen und jemand
+dreht in Spotify selbst, rechnete das Panel sonst vom alten Stand weiter.
+Übernommen wird die Antwort nur, wenn sie um mehr als zwei danebenliegt –
+Spotify rastet intern auf 1/64, und dieser Rückfall würde das Fünferraster
+zerlegen – und nur, wenn zwischenzeitlich nicht selbst gedreht wurde.
+
+In den kleinen Breiten fehlt die Zeile, in der sonst „Lautstärke 65 %" steht.
+Dort ist nur die Leiste zu sehen, und die zeigt sonst die Spielzeit. Deshalb
+ist sie bei der Lautstärke **dicker** (5 statt 3 Punkte) – das trägt über
+hellem wie dunklem Grund, anders als eine andere Farbe.
 
 ## Lauftext, warum als Bild
 

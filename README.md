@@ -38,7 +38,10 @@
 - **Audio meter** driven by Spotify's real output signal, not a canned loop.
 - **Live lyrics** with the running line.
 - **Add to a playlist** from a picker of your own playlists.
-- Scroll over the panel for volume, in steps of 5.
+- Scroll over the panel for volume, in steps of 5. Tuned for a trackpad: the
+  momentum after your fingers lift is ignored, so the level stops where you
+  left it, and one ordinary swipe moves it by about 25 rather than across the
+  whole range.
 - German or English, following the system language.
 - **Light on the machine.** Measured with `top`, averaged over five samples:
 
@@ -122,7 +125,7 @@ the prompt entirely.
 | Plus button | Open the playlist picker |
 | Pointer on the panel | Progress bar with elapsed and total time |
 | Drag on the progress bar | Seek within the track |
-| Scroll over the panel | Volume in steps of 5; the bar shows it briefly |
+| Scroll over the panel | Volume in steps of 5; the bar shows it briefly, thicker than the progress line. Up is louder, whichever way the system scroll direction is set |
 | Right-click | Menu with every setting |
 
 Width is set from the right-click menu under **Width** — six steps, different
@@ -177,6 +180,7 @@ Everything from the right-click menu. In addition, via `defaults`:
 
 ```bash
 defaults write de.jancko.docktunes volumeStep -int 2          # volume per notch (default 5)
+defaults write de.jancko.docktunes volumeScrollPoints -float 4   # swipe distance per volume point (default 6)
 defaults write de.jancko.docktunes followRate -int 30         # dock polls per second
 defaults write de.jancko.docktunes rimAlpha -float 0.30       # strength of the light rim
 defaults write de.jancko.docktunes shadowStrength -float 0.6  # shadows, 0 = off

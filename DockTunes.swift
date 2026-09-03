@@ -1268,7 +1268,12 @@ private final class ProgressBar: NSView {
         round(bounds.width * CGFloat(min(1, max(0, value))))
     }
     var tone: NSColor = .labelColor { didSet { apply() } }
-    var showsVolume = false
+    /// Die Lautstaerke belegt dieselbe Leiste wie die Spielzeit. In den
+    /// kleinen Breiten fehlt die Textzeile, in der sonst "Lautstaerke 65 %"
+    /// steht – dann waeren beide nicht zu unterscheiden. Deshalb ist die
+    /// Lautstaerke dicker: das traegt auch ueber hellem wie dunklem Grund,
+    /// anders als eine andere Farbe.
+    var showsVolume = false { didSet { apply() } }
     var onScrub: ((Double) -> Void)?      // während des Ziehens
     var onSeek: ((Double) -> Void)?       // beim Loslassen
     private var dragging = false { didSet { apply() } }
@@ -1288,7 +1293,7 @@ private final class ProgressBar: NSView {
 
     private func apply() {
         guard bounds.width > 1 else { return }
-        let barHeight: CGFloat = 3
+        let barHeight: CGFloat = showsVolume ? 5 : 3
         // Mittig im Feld – so liegt der Strich auf einer Linie mit den Zeiten
         // links und rechts davon. Der Rest des Feldes bleibt Trefferbereich.
         let y = (bounds.height - barHeight) / 2
@@ -1877,25 +1882,49 @@ private final class PlayerView: NSView {
     override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() ?? super.menu(for: event) }
 
     var onScroll: ((Int) -> Void)?
+    var onScrollBegan: (() -> Void)?
     private var scrollAccumulator: CGFloat = 0
 
     override func scrollWheel(with event: NSEvent) {
+        // Der Nachlauf gehoert nicht dazu. Hebt man die Finger vom Trackpad,
+        // schiebt das System noch einen abklingenden Schwanz von Ereignissen
+        // nach – gut fuer eine Liste, die ausrollen soll, verkehrt fuer einen
+        // Regler. An einer nachgebauten Geste gemessen: nach dem Ende kamen
+        // noch dreizehn Ereignisse, die die Lautstaerke weiter hochzogen.
+        // Jetzt bleibt sie stehen, wo der Finger sie gelassen hat.
+        guard event.momentumPhase.isEmpty else { return }
+        // Jede Geste faengt bei null an. Sonst zaehlte ein angefangener Wisch,
+        // der die Schwelle nicht erreicht hat, beim naechsten mit – und der
+        // erste Schritt kaeme zu frueh oder in die falsche Richtung.
+        if event.phase.contains(.began) {
+            scrollAccumulator = 0
+            onScrollBegan?()
+        }
+        // Nach oben gewischt heisst lauter, unabhaengig davon, wie die
+        // Scrollrichtung im System steht. Ein Regler folgt der Hand, nicht der
+        // Einstellung fuer Textfenster.
+        let dy = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
         // Eine Mausraste soll spuerbar etwas bewegen; Trackpads liefern viele
         // kleine Schritte und werden deshalb gesammelt.
         if event.hasPreciseScrollingDeltas {
-            scrollAccumulator += event.scrollingDeltaY
+            scrollAccumulator += dy
             // An die Schrittweite gekoppelt: die Lautstaerke soll je gewischtem
             // Zentimeter gleich weit wandern, egal ob in Zweier- oder
-            // Fuenferschritten. Sonst waere der Regler bei groesseren Schritten
-            // nach einem Wisch am Anschlag.
+            // Fuenferschritten.
+            //
+            // Sechs Punkte Wischweg je Lautstaerkepunkt, gemessen: ein mittlerer
+            // Wisch bringt rund 150 Punkte zusammen und bewegt den Regler damit
+            // um etwa 25. Vorher war der Faktor 1,5 – derselbe Wisch ging von 69
+            // auf 100, also ueber den ganzen verbleibenden Weg.
             let unit = UserDefaults.standard.object(forKey: "volumeStep") as? Int ?? 5
-            let step = CGFloat(unit) * 1.5
+            let perPoint = UserDefaults.standard.object(forKey: "volumeScrollPoints") as? Double ?? 6
+            let step = CGFloat(unit) * CGFloat(max(0.5, min(40, perPoint)))
             while abs(scrollAccumulator) >= step {
                 onScroll?(scrollAccumulator > 0 ? 1 : -1)
                 scrollAccumulator -= scrollAccumulator > 0 ? step : -step
             }
-        } else if event.scrollingDeltaY != 0 {
-            onScroll?(event.scrollingDeltaY > 0 ? 1 : -1)
+        } else if dy != 0 {
+            onScroll?(dy > 0 ? 1 : -1)
         }
     }
 
@@ -3014,7 +3043,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Schrittweite je Raste; per "volumeStep" anpassbar.
             let step = UserDefaults.standard.object(forKey: "volumeStep") as? Int ?? 5
             if UserDefaults.standard.bool(forKey: "systemVolume") {
-                Spotify.changeSystemVolume(by: direction * step)
+                self.pendingSystemDelta += direction * step
+                self.sendVolumeSoon()
                 self.showVolume(nil)
                 return
             }
@@ -3028,9 +3058,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ? Int((Double(base + 1) / Double(step)).rounded(.up)) * step
                 : Int((Double(base - 1) / Double(step)).rounded(.down)) * step
             let next = max(0, min(100, raw))
+            self.volumeGeneration += 1
             self.knownVolume = next
             self.showVolume(next)
-            Spotify.setVolume(next)
+            self.pendingVolume = next
+            self.sendVolumeSoon()
+        }
+
+        // Zu Beginn jeder Geste einmal nachfragen. Beim Zeigen wird der Wert
+        // schon geholt; bleibt der Zeiger aber liegen und jemand dreht in
+        // Spotify selbst, rechnete das Panel sonst vom alten Stand weiter.
+        // Einmal je Wisch, nicht je Schritt.
+        view.onScrollBegan = { [weak self] in
+            guard let self, !UserDefaults.standard.bool(forKey: "systemVolume") else { return }
+            let generation = self.volumeGeneration
+            Spotify.readVolume { level in
+                // Zwischenzeitlich selbst gedreht? Dann ist die Antwort alt.
+                guard let level, generation == self.volumeGeneration else { return }
+                // Spotifys eigene Rasterung nicht uebernehmen, sonst zerfaellt
+                // das Fuenferraster – siehe onHoverChange.
+                if let known = self.knownVolume, abs(level - known) <= 2 { return }
+                self.knownVolume = level
+            }
         }
 
         view.menuProvider = { [weak self] in self?.buildContextMenu() }
@@ -3429,6 +3478,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// alle fuenf Sekunden noetig, um die Position nachzuziehen. Bei Pause
     /// bewegt sich nichts, und einen echten Wechsel meldet Spotify von selbst –
     /// da genuegt ein Blick alle 20 Sekunden als Rueckfallebene.
+    // MARK: Lautstaerke
+
+    /// Zaehlt jeden angewandten Schritt. Eine Rueckmeldung von Spotify, die
+    /// vor einem Schritt losgeschickt wurde, ist danach ueberholt.
+    private var volumeGeneration = 0
+    private var pendingVolume: Int?
+    private var pendingSystemDelta = 0
+    private var lastVolumeSend = Date.distantPast
+    private var volumeTimer: Timer?
+
+    /// Ein Wisch loest mehrere Schritte kurz hintereinander aus. Jeden einzeln
+    /// als AppleScript zu schicken bringt nichts: die Aufrufe laufen seriell in
+    /// einer Warteschlange, und Spotify sieht am Ende ohnehin nur den letzten
+    /// Wert. Der erste Schritt geht sofort raus, damit es sich nicht traege
+    /// anfuehlt; danach hoechstens alle 70 ms, und der letzte Wert immer.
+    private func sendVolumeSoon() {
+        let since = Date().timeIntervalSince(lastVolumeSend)
+        guard since < 0.07 else { flushVolume(); return }
+        guard volumeTimer == nil else { return }
+        volumeTimer = Timer.scheduledTimer(withTimeInterval: 0.07 - since, repeats: false) {
+            [weak self] _ in
+            self?.volumeTimer = nil
+            self?.flushVolume()
+        }
+    }
+
+    private func flushVolume() {
+        lastVolumeSend = Date()
+        if pendingSystemDelta != 0 {
+            Spotify.changeSystemVolume(by: pendingSystemDelta)
+            pendingSystemDelta = 0
+        }
+        if let level = pendingVolume {
+            pendingVolume = nil
+            Spotify.setVolume(level)
+        }
+    }
+
     private func syncPollRate() {
         // Die Wiedergabeposition steht nur in der Zeitleiste, und die ist beim
         // Zeigen, bei grosser Breite und im Liedtext-Modus zu sehen. Sonst
