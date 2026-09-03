@@ -1660,7 +1660,12 @@ private final class PlayerView: NSView {
     private let artistMarquee = CALayer()
     private var artistMarqueeKey = ""
     private var artistScrolls = false
-    private var artistPaused = false
+    private var titleScrolls = false
+    private var titleStep: CGFloat = 0
+    /// Solange sich an keinem der beiden Baender etwas aendert, laufen sie
+    /// weiter; erst ein neuer Schluessel setzt beide gemeinsam neu an.
+    private var marqueeCycleKey = ""
+    private var marqueesPaused = false
     private var artistStep: CGFloat = 0
     private var artistBandWidth: CGFloat = 0
     private var marqueeKey = ""
@@ -2493,6 +2498,7 @@ private final class PlayerView: NSView {
         let natural = ceil(text.size().width)
         let key = "\(titleLabel.stringValue)|\(Int(rect.width))|\(Int(rect.height))|\(scrolls)"
         guard scrolls, natural > rect.width else {
+            titleScrolls = false
             titleLabel.isHidden = false
             titleLabel.frame = titleClip.bounds
             if marqueeKey != key {
@@ -2502,6 +2508,7 @@ private final class PlayerView: NSView {
             }
             return
         }
+        titleScrolls = true
         titleLabel.isHidden = true
         marquee.isHidden = false
         guard marqueeKey != key else { return }
@@ -2511,6 +2518,7 @@ private final class PlayerView: NSView {
         // eine Abzugslaenge; danach steht der zweite dort, wo der erste war.
         let space: CGFloat = 40
         let step = natural + space
+        titleStep = step
         let size = NSSize(width: step + natural, height: rect.height)
         let baseline = (rect.height - ceil(text.size().height)) / 2
         let image = NSImage(size: size, flipped: false) { _ in
@@ -2521,23 +2529,58 @@ private final class PlayerView: NSView {
         marquee.contents = image
         marquee.contentsScale = window?.backingScaleFactor ?? 2
         marquee.frame = CGRect(origin: .zero, size: size)
-        marquee.removeAnimation(forKey: "lauftext")
-        // Erst stehen bleiben, dann wandern. Die Pause laesst den Anfang des
-        // Titels lesen, bevor er losgeht – und sie kostet nichts: solange sich
-        // nichts bewegt, muss die Glasflaeche auch nicht neu gemischt werden.
-        // Am Ende steht der zweite Abzug genau dort, wo der erste stand, der
-        // Sprung zurueck auf null ist deshalb unsichtbar.
+    }
+
+    /// Setzt beide Baender gemeinsam in Gang.
+    ///
+    /// Frueher bekam jedes seine Bewegung dort, wo es gebaut wurde – und weil
+    /// Titel und Interpreten unterschiedlich lang sind, hatten sie
+    /// unterschiedliche Umlaufzeiten und liefen auseinander. Jetzt teilen sie
+    /// sich Startzeitpunkt und Dauer: beide stehen zusammen still, gehen
+    /// zusammen los und fangen zusammen von vorn an. Die Laufweite bleibt
+    /// verschieden, also ist das laengere Band etwas schneller unterwegs – das
+    /// faellt weit weniger auf als ein Versatz.
+    private func syncMarquees() {
+        let key = "\(marqueeKey)|\(artistMarqueeKey)|\(titleScrolls)|\(artistScrolls)"
+        guard key != marqueeCycleKey else { return }
+        marqueeCycleKey = key
+        marqueesPaused = false
+        // Der Umlauf richtet sich nach dem laengeren Weg, damit keines der
+        // beiden schneller als die gewohnten 20 Punkte je Sekunde wird.
+        let longest = max(titleScrolls ? titleStep : 0, artistScrolls ? artistStep : 0)
+        guard longest > 0 else {
+            marquee.removeAnimation(forKey: "lauftext")
+            artistMarquee.removeAnimation(forKey: "lauftext")
+            return
+        }
+        // Erst stehen bleiben, dann wandern. Die Pause laesst den Anfang lesen,
+        // bevor es losgeht – und sie kostet nichts: solange sich nichts bewegt,
+        // muss die Glasflaeche auch nicht neu gemischt werden. Am Ende steht
+        // der zweite Abzug genau dort, wo der erste stand, der Sprung zurueck
+        // auf null ist deshalb unsichtbar.
         let pause: TimeInterval = 2.5
-        let travel = Double(step) / 20         // Punkte je Sekunde
-        let start = marquee.position.x
-        let move = CAKeyframeAnimation(keyPath: "position.x")
-        move.values = [start, start, start - step]
-        move.keyTimes = [0, NSNumber(value: pause / (pause + travel)), 1]
-        move.timingFunctions = [CAMediaTimingFunction(name: .linear),
-                                CAMediaTimingFunction(name: .linear)]
-        move.duration = pause + travel
-        move.repeatCount = .infinity
-        marquee.add(move, forKey: "lauftext")
+        let travel = Double(longest) / 20      // Punkte je Sekunde
+        let begin = CACurrentMediaTime()
+        for (layer, step, laeuft) in [(marquee, titleStep, titleScrolls),
+                                      (artistMarquee, artistStep, artistScrolls)] {
+            layer.removeAnimation(forKey: "lauftext")
+            // Ein zuvor angehaltenes Band traegt noch speed 0 und einen
+            // festgehaltenen timeOffset; damit liefe die neue Bewegung nicht an.
+            layer.speed = 1
+            layer.timeOffset = 0
+            layer.beginTime = 0
+            guard laeuft, step > 0 else { continue }
+            let start = layer.position.x
+            let move = CAKeyframeAnimation(keyPath: "position.x")
+            move.values = [start, start, start - step]
+            move.keyTimes = [0, NSNumber(value: pause / (pause + travel)), 1]
+            move.timingFunctions = [CAMediaTimingFunction(name: .linear),
+                                    CAMediaTimingFunction(name: .linear)]
+            move.duration = pause + travel
+            move.repeatCount = .infinity
+            move.beginTime = begin
+            layer.add(move, forKey: "lauftext")
+        }
     }
 
     /// Setzt die Interpretenzeile. Passt sie nicht, laeuft sie durch – nach
@@ -2549,7 +2592,6 @@ private final class PlayerView: NSView {
         let key = "\(artistLabel.stringValue)|\(Int(rect.width))|\(Int(rect.height))"
         guard natural > rect.width + 1 else {
             artistScrolls = false
-            artistPaused = false
             artistLabel.isHidden = false
             artistLabel.frame = artistClip.bounds
             if artistMarqueeKey != key {
@@ -2568,24 +2610,6 @@ private final class PlayerView: NSView {
         artistStep = natural + 40
         artistBandWidth = artistStep + natural
         drawArtistBand()
-        artistMarquee.removeAnimation(forKey: "lauftext")
-        // Beim Anhalten wird die Ebene angehalten; ein neuer Text faengt wieder
-        // von vorn und in normaler Geschwindigkeit an.
-        artistMarquee.speed = 1
-        artistMarquee.timeOffset = 0
-        artistMarquee.beginTime = 0
-        artistPaused = false
-        let pause: TimeInterval = 2.5
-        let travel = Double(artistStep) / 20
-        let start = artistMarquee.position.x
-        let move = CAKeyframeAnimation(keyPath: "position.x")
-        move.values = [start, start, start - artistStep]
-        move.keyTimes = [0, NSNumber(value: pause / (pause + travel)), 1]
-        move.timingFunctions = [CAMediaTimingFunction(name: .linear),
-                                CAMediaTimingFunction(name: .linear)]
-        move.duration = pause + travel
-        move.repeatCount = .infinity
-        artistMarquee.add(move, forKey: "lauftext")
     }
 
     /// Zeichnet das Band neu – auch beim Wechsel der Unterstreichung. Ohne
@@ -2613,21 +2637,25 @@ private final class PlayerView: NSView {
         CATransaction.commit()
     }
 
-    /// Haelt das Band an, solange der Zeiger auf der Zeile steht.
+    /// Haelt die Interpretenzeile an, solange der Zeiger darauf steht. Der
+    /// Titel darueber laeuft weiter.
+    ///
+    /// Beim Loslassen faengt nicht nur sie wieder an, sondern beide gemeinsam
+    /// von vorn. Liesse man sie einfach weiterlaufen, laege sie danach genau um
+    /// die Standzeit hinter dem Titel – und der gemeinsame Takt waere dahin.
+    /// Einmal sichtbar zurueckgesetzt ist besser als dauerhaft versetzt; der
+    /// Neuanfang beginnt mit der Standpause, wirkt also nicht wie ein Ruckeln.
     private func setArtistPaused(_ paused: Bool) {
-        guard artistScrolls, paused != artistPaused else { return }
-        artistPaused = paused
-        if paused {
-            let now = artistMarquee.convertTime(CACurrentMediaTime(), from: nil)
-            artistMarquee.speed = 0
-            artistMarquee.timeOffset = now
-        } else {
-            let stopped = artistMarquee.timeOffset
-            artistMarquee.speed = 1
-            artistMarquee.timeOffset = 0
-            artistMarquee.beginTime = 0
-            artistMarquee.beginTime = artistMarquee.convertTime(CACurrentMediaTime(), from: nil) - stopped
+        guard artistScrolls, paused != marqueesPaused else { return }
+        marqueesPaused = paused
+        guard paused else {
+            marqueeCycleKey = ""
+            syncMarquees()
+            return
         }
+        let now = artistMarquee.convertTime(CACurrentMediaTime(), from: nil)
+        artistMarquee.speed = 0
+        artistMarquee.timeOffset = now
     }
 
     /// Mindestplatz fuer den Titel. Darunter waere er nur noch ein hastig
@@ -2918,6 +2946,10 @@ private final class PlayerView: NSView {
         // Ziffern tragen unterschiedlich viel Tinte an ihren Raendern: gleiche
         // gesetzte Abstaende wirken deshalb um einen Punkt ungleich. Nachgemessen
         // und hier ausgeglichen.
+        // Beide Baender gemeinsam in Gang setzen – erst hier, wenn feststeht,
+        // welches der beiden ueberhaupt laeuft und wie weit.
+        syncMarquees()
+
         let barLeft = showsTextBlock ? timeLabel.frame.maxX + timeGap : pad
         let barRight = showsTextBlock ? totalLabel.frame.minX - (timeGap - 1) : bounds.width - pad
         progressBar.frame = CGRect(x: barLeft, y: 0, width: max(10, barRight - barLeft), height: barHeight)

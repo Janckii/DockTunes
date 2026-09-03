@@ -52,7 +52,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 |---|---|
 | Klick auf das Cover | den Titel in Spotify öffnen |
 | Klick auf einen Interpreten | dessen Seite in Spotify öffnen |
-| Zeiger auf der Interpretenzeile | hält deren Lauftext an, solange er dort steht |
+| Zeiger auf der Interpretenzeile | hält deren Lauftext an, solange er dort steht; der Titel läuft weiter |
 | Klick sonst auf das Panel | Spotify in den Vordergrund holen |
 | Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
@@ -728,6 +728,16 @@ Sind mehrere Interpreten angegeben, passt die Zeile oft nicht – dann läuft si
 durch wie der Titel, nach demselben Muster: ein Bild mit zwei Abzügen, das um
 genau eine Abzugslänge wandert.
 
+Beide Zeilen laufen **im selben Takt**: gleicher Startzeitpunkt, gleiche
+Umlaufzeit. Vorher bekam jedes Band seine Bewegung dort, wo es gebaut wurde,
+und weil Titel und Interpreten unterschiedlich lang sind, hatten sie
+unterschiedliche Umlaufzeiten und liefen auseinander. Jetzt richtet sich der
+Umlauf nach dem längeren Weg – damit wird keines schneller als die gewohnten
+20 Punkte je Sekunde, das kürzere ist entsprechend langsamer unterwegs. An
+neun aufeinanderfolgenden Aufnahmen gemessen: Titel 120 Punkte, Interpreten
+69,5 – Verhältnis 1,73 gegenüber 1,74 aus den Bandlängen. Sie brauchen also
+gleich lang.
+
 Zwei Dinge kommen dazu, die der Titel nicht braucht:
 
 - **Der Zeiger hält das Band an.** Sonst müsste man einen wandernden Namen
@@ -735,6 +745,12 @@ Zwei Dinge kommen dazu, die der Titel nicht braucht:
   auf einem Namen – sonst wäre das Anhalten selbst ein Treffer, den man erst
   landen müsste. Technisch über `speed = 0` und einen festgehaltenen
   `timeOffset` der Ebene; der Titel darüber läuft dabei weiter.
+
+  Beim Loslassen fangen **beide** gemeinsam von vorn an. Liesse man die
+  Interpretenzeile einfach weiterlaufen, läge sie danach genau um die Standzeit
+  hinter dem Titel, und der gemeinsame Takt wäre dahin. Einmal sichtbar
+  zurückgesetzt ist besser als dauerhaft versetzt – und der Neuanfang beginnt
+  mit der Standpause, wirkt also nicht wie ein Ruckeln.
 - **Die Trefferzonen rechnen den Versatz mit.** Sie stehen in Textkoordinaten;
   gefragt ist die Stelle im Text, nicht im Fenster. Die tatsächliche Lage des
   Bandes steht in der **Darstellungsebene** (`presentation()`) – die
