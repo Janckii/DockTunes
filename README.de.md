@@ -411,6 +411,14 @@ Woher die Ersparnis kommt:
   Volltakt alle 60 Sekunden und Spotifys eigene Meldung genügen dann; beim
   Wiederauftauchen wird einmal frisch geholt, damit die Leiste nicht mit einem
   alten Stand aufblendet.
+- **Bei gesperrtem oder schlafendem Bildschirm fällt der Takt auf 1 Hz.** Der
+  Dock ist dann eingefahren, das Panel weg und niemand sieht hin – zwölf
+  Abfragen je Sekunde wären reine Verschwendung. Gemessen am gesperrten Schirm:
+  **1,50 % gegen 0,92 %**, zweimal bestätigt. Ganz abschalten wäre heikler:
+  bliebe eine Meldung aus, käme das Panel nie wieder; einmal je Sekunde findet
+  auch ohne Meldung zurück. Erkannt über `CGSSessionScreenIsLocked` beim Start
+  und danach über `com.apple.screenIsLocked` beziehungsweise
+  `screensDidSleepNotification`.
 - **Im Stromsparmodus halbieren sich die Takte.** Tonanzeige 24 → 12 Bilder,
   Nachführen 12 → 8 Blicke je Sekunde. Das System hält Hintergrundarbeit dann
   ohnehin zurück; ein Panel neben dem Dock hat erst recht keinen Anspruch.

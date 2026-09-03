@@ -65,6 +65,10 @@
   LaunchServices layers — 14 KB after heavy use, none in our code. Covers are
   stored downscaled, so a long listening session stays at 26 MB rather than 34.
 
+  With the screen locked or asleep the Dock is retracted and nobody is looking,
+  so everything drops to one look per second: 1.50 % against 0.92 %, measured on
+  a locked screen.
+
   The 60 Hz Dock tracking only runs when the Dock can actually react to the
   pointer — it cannot if hiding is off and magnification is off or set to the
   same size. Walking the pointer past the Dock then costs 0.95 % instead of

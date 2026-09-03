@@ -3212,6 +3212,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Fuer all das gab es bisher keinen schnellen Takt, und bei vier Blicken
     /// je Sekunde lief das Panel sichtbar hinterher.
     private var movingUntil = Date.distantPast
+    /// Gesperrter oder schlafender Bildschirm. Dann ist der Dock eingefahren,
+    /// das Panel weg und niemand sieht hin – zwoelf Abfragen je Sekunde waeren
+    /// reine Verschwendung, und am Akku faellt genau das ins Gewicht.
+    /// Ganz abschalten waere heikler: bliebe eine Meldung aus, kaeme das Panel
+    /// nie wieder. Einmal je Sekunde findet auch ohne Meldung zurueck.
+    private var screenOff = false
+
+    static func screenIsLocked() -> Bool {
+        (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+    }
+
+    private func setScreenOff(_ aus: Bool, melden: Bool) {
+        guard aus != screenOff else { return }
+        screenOff = aus
+        setFollowRate(fast: false, force: true)
+        syncPollRate()
+        updateAnalyzer()
+        if melden { noteFollow(aus ? "Bildschirm aus" : "Bildschirm wieder da") }
+    }
 
     private func refreshDockBehaviour() {
         let domain = "com.apple.dock" as CFString
@@ -3291,6 +3310,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 self.movingUntil = Date().addingTimeInterval(2)
                 self.setFollowRate(fast: true)
+        }
+
+        // Gesperrter oder schlafender Bildschirm.
+        setScreenOff(Self.screenIsLocked(), melden: false)
+        for (zentrum, namen) in [
+            (DistributedNotificationCenter.default() as NotificationCenter,
+             ["com.apple.screenIsLocked", "com.apple.screenIsUnlocked"]),
+            (NSWorkspace.shared.notificationCenter,
+             [NSWorkspace.screensDidSleepNotification.rawValue,
+              NSWorkspace.screensDidWakeNotification.rawValue]),
+        ] {
+            for name in namen {
+                zentrum.addObserver(forName: NSNotification.Name(name), object: nil,
+                                    queue: .main) { [weak self] note in
+                    let aus = note.name.rawValue.contains("Locked")
+                        || note.name.rawValue.contains("DidSleep")
+                    self?.setScreenOff(aus, melden: true)
+                }
+            }
         }
 
         // Der Stromsparmodus laesst sich im Betrieb umlegen; beide Takte
@@ -3859,7 +3897,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ist das Panel gar nicht zu sehen – Vollbild, ausgefahrener Dock –,
         // sieht niemand die Position. Der Volltakt alle 60 Sekunden und
         // Spotifys eigene Meldung genuegen dann.
-        let visible = panel?.isVisible == true
+        let visible = panel?.isVisible == true && !screenOff
         let needsPosition = visible
             && (view?.isHovering == true || view?.showsExtras == true || lyricsMode)
         let interval: TimeInterval = !visible ? 30
@@ -3941,7 +3979,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Auch das sichtbare Panel gehoert in die Bedingung: im Vollbild ist es
         // weg, der Mitschnitt lief aber weiter und kostete 0,4 % fuer nichts.
         // Am Laptop ist Vollbild der Normalfall, nicht die Ausnahme.
-        guard spectrumEnabled, view?.spectrumShowing == true,
+        guard spectrumEnabled, view?.spectrumShowing == true, !screenOff,
               panel?.isVisible == true, track.isPlaying, track.spotifyRunning,
               let spotify = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.spotify.client" })
         else {
@@ -4223,7 +4261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard force || fast != fastFollow else { return }
         fastFollow = fast
         followTimer?.invalidate()
-        let hz = fast ? (lowPower ? fastFollowRate / 2 : fastFollowRate) : (lowPower ? 8 : 12)
+        let hz = screenOff ? 1
+            : (fast ? (lowPower ? fastFollowRate / 2 : fastFollowRate) : (lowPower ? 8 : 12))
         followTimer = schedule(every: 1.0 / hz) { [weak self] in self?.followDock() }
         writeDiagnostics()
     }
@@ -4398,6 +4437,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Panel sichtbar           : \(panel?.isVisible == true)",
             "Auswahlfenster           : \(picker?.isVisible == true ? "offen mit \(pickerCount) Playlists" : "zu")",
             "Nachfuehren, zuletzt     : \(followLog.isEmpty ? "nichts" : followLog.joined(separator: " | "))",
+            "Bildschirm               : \(screenOff ? "aus oder gesperrt - Takt auf 1 Hz" : "an")",
             "Stromsparmodus           : \(lowPower ? "an - Takte halbiert" : "aus")",
             "Dock bewegt sich gerade  : \(Date() < movingUntil ? "ja - bildsynchron" : "nein")",
             "Dock reagiert auf Zeiger : \(dockReactsToPointer ? "ja" : "nein - schneller Takt aus")",
