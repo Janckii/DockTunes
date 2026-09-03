@@ -36,8 +36,8 @@
   artists the line usually does not fit, so it scrolls like the title, in the
   same cycle — both stand still together and set off together. They scroll on
   demand rather than constantly: once through on every new track, and then
-  whenever the pointer is on the panel. Resting it on the artist line holds both
-  still, so a name can be clicked in peace. The one under
+  whenever the pointer is on the panel. Resting it on the artist line holds that
+  line still, so a name can be clicked in peace. The one under
   the pointer is underlined — there is no pointing-hand cursor, because only
   the frontmost application may set the cursor and the panel never comes
   forward.
@@ -126,7 +126,7 @@ the prompt entirely.
 | Click the cover | Open the track in Spotify |
 | Click an artist | Open that artist in Spotify |
 | Pointer on the panel | Runs the title and artist lines if they do not fit |
-| Pointer on the artist line | Holds both still, so a name can be clicked |
+| Pointer on the artist line | Holds that line still, so a name can be clicked; the title keeps going |
 | Click anywhere else on the panel | Bring Spotify to the front |
 | Transport buttons | Previous, play/pause, next |
 | Repeat button | Off → repeat all → repeat one → off |

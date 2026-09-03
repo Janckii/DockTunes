@@ -53,7 +53,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 | Klick auf das Cover | den Titel in Spotify öffnen |
 | Klick auf einen Interpreten | dessen Seite in Spotify öffnen |
 | Zeiger auf dem Panel | lässt Titel und Interpreten durchlaufen, falls sie nicht hineinpassen |
-| Zeiger auf der Interpretenzeile | hält beide an, damit ein Name zu treffen ist |
+| Zeiger auf der Interpretenzeile | hält diese an, damit ein Name zu treffen ist; der Titel läuft weiter |
 | Klick sonst auf das Panel | Spotify in den Vordergrund holen |
 | Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
@@ -748,11 +748,11 @@ im peripheren Blickfeld, und dauernde Bewegung dort ist genau das, was ein
 Widget von etwas unterscheidet, das dazuzugehören scheint. Alles andere am
 Panel ist schon so gebaut: Zeitleiste und Zeiten erscheinen erst beim Zeigen.
 
-| Zeiger | beide Bänder |
-|---|---|
-| irgendwo auf dem Panel | laufen |
-| auf der Interpretenzeile | stehen still, wo sie sind |
-| weg vom Panel | zurück auf Anfang, stehen |
+| Zeiger | Titel | Interpreten |
+|---|---|---|
+| irgendwo auf dem Panel | läuft | läuft |
+| auf der Interpretenzeile | läuft | steht still, wo sie ist |
+| weg vom Panel | zurück auf Anfang | zurück auf Anfang |
 
 Dazu **ein Durchlauf je neuem Titel**, damit man ihn einmal ganz zu sehen
 bekommt, ohne hinzuzeigen. War das Panel dabei verdeckt – Vollbild etwa –, wird
@@ -764,17 +764,26 @@ Umlauf warten. So fängt es immer sauber von vorn an – und weil es dann ohnehi
 am Anfang steht, gibt es beim Starten keinen Sprung.
 
 Angehalten wird, sobald der Zeiger auf der Zeile steht, nicht erst auf einem
-Namen – sonst wäre das Anhalten selbst ein Treffer, den man erst landen müsste.
-Und **beide** halten an, nicht nur die untere: eines allein anzuhalten brächte
-sie um die Standzeit auseinander und stellte genau das wieder her, was der
-gemeinsame Takt beseitigt. Beim Fortsetzen wird die Standzeit aus der
-Ebenenzeit herausgerechnet, sonst spränge das Band um genau diese Spanne nach
-vorn.
+Namen – sonst wäre das Anhalten selbst ein Treffer, den man erst landen müsste,
+und bei stillstehendem Zeiger käme es nie zustande, weil dann keine
+Mausbewegung mehr gemeldet wird.
 
-Nachgemessen an je drei Aufnahmen: ohne Zeiger 0 und 0 Punkte, auf der
-Titelzeile 14/35 und 8/20, auf der Interpretenzeile wieder 0 und 0. Das
-Verhältnis im Lauf bleibt bei 1,75 wie die Bandlängen, der Gleichtakt übersteht
-das Anhalten also.
+**Nur die Interpretenzeile hält an, der Titel läuft weiter.** Der erste Anlauf
+hielt beide an – und verschluckte damit genau den häufigsten Fall: mitten auf
+das Panel zu zeigen heißt, auf der Interpretenzeile zu landen, und dann fing gar
+nichts an zu laufen. Dass die beiden während des Zeigens versetzt sind, kostet
+seit dem Zurückgehen auf Anfang nichts mehr: beim Verlassen stehen sie ohnehin
+wieder gemeinsam am Anfang. Vorher, als sie dauernd liefen, wäre der Versatz
+geblieben – deshalb hielten damals beide an.
+
+Beim Fortsetzen wird die Standzeit aus der Ebenenzeit herausgerechnet, sonst
+spränge das Band um genau diese Spanne nach vorn.
+
+Nachgemessen an je zwei Aufnahmen im Abstand von 1,8 s, von jedem Einstieg aus:
+über Cover, Titelzeile und Tasten laufen beide (Titel 17–18, Interpreten 10
+Punkte, Verhältnis wie die Bandlängen); über der Interpretenzeile läuft der
+Titel mit 17 und die Zeile steht bei 0; ohne Zeiger sind die beiden Aufnahmen
+pixelgleich.
 
 **Rechenzeit spart das nicht** – gemessen 1,86 % mit dauernd laufenden Bändern
 gegen 1,78 % auf Abruf, und in einer schmaleren Fassung 0,66 gegen 0,65 %.

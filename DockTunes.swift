@@ -1668,7 +1668,8 @@ private final class PlayerView: NSView {
     /// Was die beiden Baender gerade tun. Sie tun immer dasselbe – siehe
     /// setMarqueeState.
     private enum MarqueeState { case laeuft, haelt, amAnfang }
-    private var marqueeState = MarqueeState.amAnfang
+    private var titleState = MarqueeState.amAnfang
+    private var artistState = MarqueeState.amAnfang
     private var marqueeCycle: TimeInterval = 0
     private var pointerOnArtistLine = false
     /// Ein Durchlauf je neuem Titel, damit man ihn einmal ganz zu sehen bekommt,
@@ -2605,7 +2606,8 @@ private final class PlayerView: NSView {
             move.repeatCount = .infinity
             layer.add(move, forKey: "lauftext")
         }
-        marqueeState = .amAnfang
+        titleState = .amAnfang
+        artistState = .amAnfang
         updateMarqueeRun()
     }
 
@@ -2684,17 +2686,27 @@ private final class PlayerView: NSView {
                 self?.updateMarqueeRun()
             }
         }
-        if pointerOnArtistLine { setMarqueeState(.haelt) }
-        else if isHovering || Date() < oneShotUntil { setMarqueeState(.laeuft) }
-        else { setMarqueeState(.amAnfang) }
+        guard isHovering || Date() < oneShotUntil else {
+            setState(marquee, &titleState, .amAnfang)
+            setState(artistMarquee, &artistState, .amAnfang)
+            return
+        }
+        // Der Titel laeuft, sobald jemand hinsieht – auch dann, wenn der Zeiger
+        // auf der Interpretenzeile steht. Sonst faengt beim haeufigsten
+        // Einstieg gar nichts an: mitten auf dem Panel, wo die Namen stehen.
+        setState(marquee, &titleState, .laeuft)
+        setState(artistMarquee, &artistState, pointerOnArtistLine ? .haelt : .laeuft)
     }
 
-    /// Beide Ebenen immer gemeinsam: sie teilen sich den Takt, und eine allein
-    /// zu bewegen braechte sie genau um die Standzeit auseinander.
-    private func setMarqueeState(_ state: MarqueeState) {
-        guard state != marqueeState else { return }
-        marqueeState = state
-        for layer in [marquee, artistMarquee] {
+    /// Haelt der Zeiger die Interpretenzeile an, laeuft der Titel weiter – die
+    /// beiden sind dann fuer die Dauer des Zeigens versetzt. Das kostet nichts
+    /// mehr: beim Verlassen gehen ohnehin beide auf Anfang zurueck und sind
+    /// damit wieder im Takt. Frueher, als sie dauernd liefen, waere der Versatz
+    /// geblieben – deshalb hielten damals beide an.
+    private func setState(_ layer: CALayer, _ current: inout MarqueeState, _ state: MarqueeState) {
+        guard state != current else { return }
+        current = state
+        do {
             switch state {
             case .laeuft:
                 // Die Standzeit aus der Ebenenzeit herausrechnen, sonst spraenge
