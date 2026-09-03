@@ -1665,7 +1665,19 @@ private final class PlayerView: NSView {
     /// Solange sich an keinem der beiden Baender etwas aendert, laufen sie
     /// weiter; erst ein neuer Schluessel setzt beide gemeinsam neu an.
     private var marqueeCycleKey = ""
-    private var marqueesPaused = false
+    /// Was die beiden Baender gerade tun. Sie tun immer dasselbe – siehe
+    /// setMarqueeState.
+    private enum MarqueeState { case laeuft, haelt, amAnfang }
+    private var marqueeState = MarqueeState.amAnfang
+    private var marqueeCycle: TimeInterval = 0
+    private var pointerOnArtistLine = false
+    /// Ein Durchlauf je neuem Titel, damit man ihn einmal ganz zu sehen bekommt,
+    /// ohne hinzuzeigen. Steht das Panel dabei nicht im Bild – Vollbild etwa –,
+    /// wird er nachgeholt, sobald es wieder da ist, statt ins Leere zu laufen.
+    private var pendingOneShot = false
+    private var oneShotUntil = Date.distantPast
+    private var oneShotTimer: Timer?
+    private var lastMarqueeText = ""
     private var artistStep: CGFloat = 0
     private var artistBandWidth: CGFloat = 0
     private var marqueeKey = ""
@@ -2407,7 +2419,8 @@ private final class PlayerView: NSView {
     override func mouseExited(with event: NSEvent) {
         setHovering(false)
         setHoveredArtist(nil)
-        setMarqueesPaused(false)
+        pointerOnArtistLine = false
+        updateMarqueeRun()
     }
     /// Kommt nur, solange der Zeiger auf dem Panel steht, und faellt sofort
     /// wieder aus. Gezeichnet wird nur, wenn ein anderer Name darunter liegt.
@@ -2416,8 +2429,9 @@ private final class PlayerView: NSView {
         // Anhalten, sobald der Zeiger auf der Zeile steht – nicht erst auf
         // einem Namen. Sonst muesste man einen wandernden Namen treffen, um
         // ihn zum Stehen zu bringen.
-        setMarqueesPaused(!artistClip.isHidden
-                        && artistClip.bounds.contains(convert(point, to: artistClip)))
+        pointerOnArtistLine = !artistClip.isHidden
+            && artistClip.bounds.contains(convert(point, to: artistClip))
+        updateMarqueeRun()
         setHoveredArtist(artistZone(at: point))
     }
 
@@ -2436,6 +2450,8 @@ private final class PlayerView: NSView {
     private func setHovering(_ value: Bool) {
         guard value != isHovering else { return }
         isHovering = value
+        if !value { pointerOnArtistLine = false }
+        updateMarqueeRun()
         startHoverAnimation()
         onHoverChange?(value)
     }
@@ -2544,14 +2560,21 @@ private final class PlayerView: NSView {
         let key = "\(marqueeKey)|\(artistMarqueeKey)|\(titleScrolls)|\(artistScrolls)"
         guard key != marqueeCycleKey else { return }
         marqueeCycleKey = key
-        marqueesPaused = false
         // Der Umlauf richtet sich nach dem laengeren Weg, damit keines der
         // beiden schneller als die gewohnten 20 Punkte je Sekunde wird.
         let longest = max(titleScrolls ? titleStep : 0, artistScrolls ? artistStep : 0)
         guard longest > 0 else {
             marquee.removeAnimation(forKey: "lauftext")
             artistMarquee.removeAnimation(forKey: "lauftext")
+            marqueeCycle = 0
             return
+        }
+        // Ein Durchlauf je neuem Titel – aber nicht bei jeder Breitenaenderung,
+        // deshalb am Text gemessen und nicht am ganzen Schluessel.
+        let textKey = titleLabel.stringValue + "\u{1}" + artistLabel.stringValue
+        if textKey != lastMarqueeText {
+            lastMarqueeText = textKey
+            pendingOneShot = true
         }
         // Erst stehen bleiben, dann wandern. Die Pause laesst den Anfang lesen,
         // bevor es losgeht – und sie kostet nichts: solange sich nichts bewegt,
@@ -2560,13 +2583,15 @@ private final class PlayerView: NSView {
         // auf null ist deshalb unsichtbar.
         let pause: TimeInterval = 2.5
         let travel = Double(longest) / 20      // Punkte je Sekunde
-        let begin = CACurrentMediaTime()
+        marqueeCycle = pause + travel
         for (layer, step, laeuft) in [(marquee, titleStep, titleScrolls),
                                       (artistMarquee, artistStep, artistScrolls)] {
             layer.removeAnimation(forKey: "lauftext")
-            // Ein zuvor angehaltenes Band traegt noch speed 0 und einen
-            // festgehaltenen timeOffset; damit liefe die neue Bewegung nicht an.
-            layer.speed = 1
+            // Angehalten und am Anfang anlegen: die Bewegung wird gleich
+            // eingehaengt, laufen soll sie aber erst, wenn jemand hinsieht.
+            // Beide Ebenen stehen dabei auf derselben Ebenenzeit null – daher
+            // laufen sie spaeter im Gleichtakt an.
+            layer.speed = 0
             layer.timeOffset = 0
             layer.beginTime = 0
             guard laeuft, step > 0 else { continue }
@@ -2578,9 +2603,10 @@ private final class PlayerView: NSView {
                                     CAMediaTimingFunction(name: .linear)]
             move.duration = pause + travel
             move.repeatCount = .infinity
-            move.beginTime = begin
             layer.add(move, forKey: "lauftext")
         }
+        marqueeState = .amAnfang
+        updateMarqueeRun()
     }
 
     /// Setzt die Interpretenzeile. Passt sie nicht, laeuft sie durch – nach
@@ -2637,23 +2663,40 @@ private final class PlayerView: NSView {
         CATransaction.commit()
     }
 
-    /// Haelt beide Baender an, solange der Zeiger auf der Interpretenzeile
-    /// steht.
+    /// Entscheidet, was die Baender tun sollen.
     ///
-    /// Beide, nicht nur das untere: sie laufen im selben Takt, und eines allein
-    /// anzuhalten wuerde sie um die Standzeit auseinanderbringen – also gerade
-    /// das wiederherstellen, was der gemeinsame Takt beseitigt. So bleiben sie
-    /// beisammen, und es gibt nie einen Ruecksprung: sie stehen dort, wo sie
-    /// waren, und laufen von dort weiter.
-    private func setMarqueesPaused(_ paused: Bool) {
-        guard titleScrolls || artistScrolls, paused != marqueesPaused else { return }
-        marqueesPaused = paused
+    /// Ohne Zeiger stehen sie am Anfang. Dauernde Bewegung neben dem Dock ist
+    /// genau das, was ein Widget von etwas unterscheidet, das dazuzugehoeren
+    /// scheint – und sie kostet: das Interpretenband allein 0,57 Prozentpunkte,
+    /// das Titelband aehnlich, und das dauerhaft, sobald ein Titel zu lang ist.
+    ///
+    /// Zeigt man auf das Panel, laufen sie los. Zeigt man auf die
+    /// Interpretenzeile, halten sie an – dort will man klicken, nicht lesen.
+    func updateMarqueeRun() {
+        guard titleScrolls || artistScrolls else { return }
+        if pendingOneShot, window?.isVisible == true, marqueeCycle > 0 {
+            pendingOneShot = false
+            oneShotUntil = Date().addingTimeInterval(marqueeCycle)
+            oneShotTimer?.invalidate()
+            oneShotTimer = Timer.scheduledTimer(withTimeInterval: marqueeCycle,
+                                                repeats: false) { [weak self] _ in
+                self?.oneShotTimer = nil
+                self?.updateMarqueeRun()
+            }
+        }
+        if pointerOnArtistLine { setMarqueeState(.haelt) }
+        else if isHovering || Date() < oneShotUntil { setMarqueeState(.laeuft) }
+        else { setMarqueeState(.amAnfang) }
+    }
+
+    /// Beide Ebenen immer gemeinsam: sie teilen sich den Takt, und eine allein
+    /// zu bewegen braechte sie genau um die Standzeit auseinander.
+    private func setMarqueeState(_ state: MarqueeState) {
+        guard state != marqueeState else { return }
+        marqueeState = state
         for layer in [marquee, artistMarquee] {
-            if paused {
-                let now = layer.convertTime(CACurrentMediaTime(), from: nil)
-                layer.speed = 0
-                layer.timeOffset = now
-            } else {
+            switch state {
+            case .laeuft:
                 // Die Standzeit aus der Ebenenzeit herausrechnen, sonst spraenge
                 // das Band um genau diese Spanne nach vorn.
                 let stopped = layer.timeOffset
@@ -2661,6 +2704,17 @@ private final class PlayerView: NSView {
                 layer.timeOffset = 0
                 layer.beginTime = 0
                 layer.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) - stopped
+            case .haelt:
+                let now = layer.convertTime(CACurrentMediaTime(), from: nil)
+                layer.speed = 0
+                layer.timeOffset = now
+            case .amAnfang:
+                // Nicht dort stehenbleiben, wo es gerade war: sonst saehe man
+                // beim naechsten Hinsehen die Mitte eines Titels und muesste
+                // einen ganzen Umlauf warten.
+                layer.speed = 0
+                layer.timeOffset = 0
+                layer.beginTime = 0
             }
         }
     }
@@ -4235,6 +4289,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updateAnalyzer()
             syncPollRate()
             refreshPosition()
+            // War das Panel beim Titelwechsel verdeckt, wird der eine
+            // Durchlauf jetzt nachgeholt statt ins Leere gelaufen zu sein.
+            view.updateMarqueeRun()
             writeDiagnostics()
         }
         // Album und Liedtextvorschau haengen an der Breite; nach jeder

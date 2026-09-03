@@ -52,7 +52,8 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 |---|---|
 | Klick auf das Cover | den Titel in Spotify öffnen |
 | Klick auf einen Interpreten | dessen Seite in Spotify öffnen |
-| Zeiger auf der Interpretenzeile | hält beide Lauftexte an, solange er dort steht |
+| Zeiger auf dem Panel | lässt Titel und Interpreten durchlaufen, falls sie nicht hineinpassen |
+| Zeiger auf der Interpretenzeile | hält beide an, damit ein Name zu treffen ist |
 | Klick sonst auf das Panel | Spotify in den Vordergrund holen |
 | Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
@@ -740,20 +741,46 @@ gleich lang.
 
 Zwei Dinge kommen dazu, die der Titel nicht braucht:
 
-- **Der Zeiger hält beide Bänder an.** Sonst müsste man einen wandernden Namen
-  treffen. Angehalten wird, sobald der Zeiger auf der Zeile steht, nicht erst
-  auf einem Namen – sonst wäre das Anhalten selbst ein Treffer, den man erst
-  landen müsste. Technisch über `speed = 0` und einen festgehaltenen
-  `timeOffset` der Ebene.
+### Drei Zustände
 
-  **Beide**, nicht nur die untere: eines allein anzuhalten brächte sie um die
-  Standzeit auseinander und stellte genau das wieder her, was der gemeinsame
-  Takt beseitigt. So bleiben sie beisammen, und es gibt nie einen Rücksprung –
-  sie stehen, wo sie waren, und laufen von dort weiter. Beim Fortsetzen wird
-  die Standzeit aus der Ebenenzeit herausgerechnet, sonst spränge das Band um
-  genau diese Spanne nach vorn. Gemessen: mit Zeiger auf der Zeile beide 0
-  Punkte, danach Titel 26 und Interpreten 15 Punkte je Aufnahme – Verhältnis
-  1,75 wie die Bandlängen, der Gleichlauf übersteht das Anhalten also.
+Gelaufen wird **auf Abruf**, nicht dauernd. Das Panel sitzt neben dem Dock, also
+im peripheren Blickfeld, und dauernde Bewegung dort ist genau das, was ein
+Widget von etwas unterscheidet, das dazuzugehören scheint. Alles andere am
+Panel ist schon so gebaut: Zeitleiste und Zeiten erscheinen erst beim Zeigen.
+
+| Zeiger | beide Bänder |
+|---|---|
+| irgendwo auf dem Panel | laufen |
+| auf der Interpretenzeile | stehen still, wo sie sind |
+| weg vom Panel | zurück auf Anfang, stehen |
+
+Dazu **ein Durchlauf je neuem Titel**, damit man ihn einmal ganz zu sehen
+bekommt, ohne hinzuzeigen. War das Panel dabei verdeckt – Vollbild etwa –, wird
+er nachgeholt, sobald es wieder da ist, statt ins Leere zu laufen.
+
+Ohne Zeiger stehen sie **am Anfang**, nicht dort, wo sie gerade waren. Sonst
+sähe man beim nächsten Hinsehen die Mitte eines Titels und müsste einen ganzen
+Umlauf warten. So fängt es immer sauber von vorn an – und weil es dann ohnehin
+am Anfang steht, gibt es beim Starten keinen Sprung.
+
+Angehalten wird, sobald der Zeiger auf der Zeile steht, nicht erst auf einem
+Namen – sonst wäre das Anhalten selbst ein Treffer, den man erst landen müsste.
+Und **beide** halten an, nicht nur die untere: eines allein anzuhalten brächte
+sie um die Standzeit auseinander und stellte genau das wieder her, was der
+gemeinsame Takt beseitigt. Beim Fortsetzen wird die Standzeit aus der
+Ebenenzeit herausgerechnet, sonst spränge das Band um genau diese Spanne nach
+vorn.
+
+Nachgemessen an je drei Aufnahmen: ohne Zeiger 0 und 0 Punkte, auf der
+Titelzeile 14/35 und 8/20, auf der Interpretenzeile wieder 0 und 0. Das
+Verhältnis im Lauf bleibt bei 1,75 wie die Bandlängen, der Gleichtakt übersteht
+das Anhalten also.
+
+**Rechenzeit spart das nicht** – gemessen 1,86 % mit dauernd laufenden Bändern
+gegen 1,78 % auf Abruf, und in einer schmaleren Fassung 0,66 gegen 0,65 %.
+Beides liegt im Rauschen. Der Grund ist die Ruhe, nicht die Last. (Die 0,57
+Prozentpunkte weiter unten stammen aus einem anderen Vergleich: Interpretenband
+vorhanden gegen gar nicht vorhanden.)
 - **Die Trefferzonen rechnen den Versatz mit.** Sie stehen in Textkoordinaten;
   gefragt ist die Stelle im Text, nicht im Fenster. Die tatsächliche Lage des
   Bandes steht in der **Darstellungsebene** (`presentation()`) – die
