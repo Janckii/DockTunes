@@ -87,18 +87,35 @@ diesem einen Namen, eine Aufzählung findet dort nichts.
 Die Breite ist **fest** und wird nicht vom Titel bestimmt. Eine mitwandernde
 Breite wäre bei jedem Lied eine andere, und das Panel wäre ständig in Bewegung.
 
-Eingestellt wird sie im Rechtsklick-Menü unter **Breite**, in vier Stufen
-(normal 250 / 380 / 520 / 640, im Liedtext-Modus 420 / 520 / 640 / 760).
-Die Stufen sind nicht rund gewählt, sondern an den Inhalt gekoppelt: jede
-bringt etwas Sichtbares mehr. Normal- und Liedtext-Modus haben eigene Stufen.
-Zwischenwerte über `panelWidth` und `lyricsWidth`, siehe Einstellungen;
-weniger als 200 Punkte nimmt das Panel nicht an.
+Eingestellt wird sie im Rechtsklick-Menü unter **Breite**, in sechs Stufen
+(Winzig, Mini, dann 250 / 380 / 520 / 640; im Liedtext-Modus 420 / 520 / 640 /
+760). Die Stufen sind nicht rund gewählt, sondern an den Inhalt gekoppelt:
+jede bringt etwas Sichtbares mehr. Normal- und Liedtext-Modus haben eigene
+Stufen. Zwischenwerte über `panelWidth` und `lyricsWidth`, siehe Einstellungen.
+
+**Winzig** zeigt nur Abspielen/Pause und Weiter, **Mini** dazu das Cover –
+gedacht für den Laptop unterwegs, wo neben dem Dock wenig Platz ist und jede
+Zeichenfläche Strom kostet. Beide zeigen beim Zeigen weiterhin die Zeitleiste,
+nur ohne die beiden Zeitangaben und dafür über die volle Breite. Ihre Zahlen
+stehen nicht fest, sondern werden beim Aufklappen des Menüs ausgerechnet: die
+Cover-Größe hängt an der Dock-Höhe, und eine feste Zahl wäre bei einem größeren
+Dock zu knapp – dann fiele genau das Cover weg, das Mini ausmacht. Bei
+Dock-Höhe 51 sind es 73 und 110 Punkte.
+
+In beiden rücken die Tasten enger zusammen als im vollen Panel: 8 statt 12
+Punkte Abstand, und der Abstand, den die Reihe sonst nach links freihält, fällt
+weg – links steht ja nichts. Der Abstand vom Cover zur ersten Taste ist auf 4
+gesetzt und nicht auf die üblichen 10, weil der Tastenrahmen rund neun Punkte
+eigenen Innenrand mitbringt; sichtbar sind es damit dieselben rund dreizehn wie
+zwischen den beiden Tasten.
 
 **Je breiter, desto mehr steht drin:**
 
 | ab | kommt dazu |
 |---|---|
-| 200 | Cover, Titel, Interpret, Abspielen/Pause, Weiter |
+| 73 | Abspielen/Pause und Weiter, mittig (Winzig) |
+| 110 | Cover (Mini) |
+| 200 | Titel und Interpret |
 | 240 | Tonanzeige (wenn im Menü eingeschaltet) |
 | 300 | Zurück |
 | 360 | Playlist-Knopf |
@@ -109,6 +126,13 @@ weniger als 200 Punkte nimmt das Panel nicht an.
 Die Reihenfolge folgt dem Nutzen: **weiter** ist wichtiger als zurück, und
 beides wichtiger als das Plus – im schmalsten Panel steht deshalb die
 Weiter-Taste, nicht der Playlist-Knopf.
+
+Weggelassen wird in dieser Reihenfolge: Wiederholen, Plus, **Tonanzeige**,
+Zurück, Text, Cover. Die Tonanzeige weicht vor dem Text, weil sie Zierde ist
+und der Titel der Inhalt – stand sie dahinter, verschwand bei 216 Punkten der
+Text, obwohl er ohne sie bequem passte. Es gibt dabei keine gesetzten
+Schwellen: gerechnet wird, was hineinpasst, und die Zahlen in der Tabelle sind
+das Ergebnis, nicht die Vorgabe.
 
 Der **Wiederholen-Knopf** steht ab der Normalgröße und schaltet in drei
 Stufen weiter:
@@ -365,6 +389,20 @@ Woher die Ersparnis kommt:
   `com.apple.dock.prefchanged` hin. Ergebnis 2,72 % → 0,95 %, sobald der
   Zeiger in die Nähe des Docks kommt – und das tut er ständig, das Beobachtungs-
   band ist 180 Punkte breit.
+- **Der Mitschnitt läuft nur bei sichtbarer Tonanzeige.** Er hing bisher am
+  Schalter im Menü, nicht daran, ob die Anzeige tatsächlich im Bild steht. In
+  den kleinen Breiten ist für sie kein Platz, im Vollbild ist das ganze Panel
+  weg – gerechnet wurde trotzdem. Auf dem Entwicklungsrechner, wo neben dem
+  breiten Dock nur 216 Punkte bleiben und die Anzeige nirgends hinpasst:
+  **1,67 % → 0,19 %**, auf demselben Titel an derselben Stelle gemessen. Am
+  Laptop ist Vollbild der Normalfall, nicht die Ausnahme.
+- **Ohne sichtbares Panel wird auch die Position nicht mehr abgefragt.** Der
+  Volltakt alle 60 Sekunden und Spotifys eigene Meldung genügen dann; beim
+  Wiederauftauchen wird einmal frisch geholt, damit die Leiste nicht mit einem
+  alten Stand aufblendet.
+- **Im Stromsparmodus halbieren sich die Takte.** Tonanzeige 24 → 12 Bilder,
+  Nachführen 12 → 8 Blicke je Sekunde. Das System hält Hintergrundarbeit dann
+  ohnehin zurück; ein Panel neben dem Dock hat erst recht keinen Anspruch.
 - **Cover werden verkleinert gespeichert.** Spotify liefert 640×640; gezeigt
   werden sie auf 34 Punkten. Einmal gezeichnet hält `NSImage` die entpackte
   Fläche fest, gut anderthalb Megabyte je Bild. Jetzt wandern sie als 256×256

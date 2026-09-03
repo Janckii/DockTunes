@@ -125,9 +125,16 @@ the prompt entirely.
 | Scroll over the panel | Volume in steps of 5; the bar shows it briefly |
 | Right-click | Menu with every setting |
 
-Width is set from the right-click menu under **Width** — four steps, different
+Width is set from the right-click menu under **Width** — six steps, different
 ones for normal and lyrics mode. If the title does not fit it scrolls: 20
 points per second, 2.5 seconds of stillness before each pass.
+
+The two smallest are for a laptop on the move: **Tiny** keeps only play/pause
+and next, **Mini** adds the cover. Both still show the progress bar on hover,
+without the two time readouts and across the full width. Their numbers are
+computed when the menu opens rather than fixed, because the cover scales with
+the Dock — on a taller Dock a fixed number would drop the very cover that makes
+Mini worth having.
 
 ## Playlists
 

@@ -1657,6 +1657,11 @@ private final class PlayerView: NSView {
 
     let spectrum = SpectrumView()
     var showsSpectrum = false { didSet { needsLayout = true } }
+    /// Ob sie tatsaechlich im Bild steht. Der Schalter oben sagt nur, ob sie
+    /// erwuenscht ist – in den kleinen Breiten ist dafuer kein Platz, und dann
+    /// braucht auch niemand den Mitschnitt.
+    private(set) var spectrumShowing = false
+    var onSpectrumVisibility: (() -> Void)?
 
     // Was bei welcher Breite dazukommt. Die Reihenfolge folgt dem Nutzen:
     // weiter ist wichtiger als zurueck, und beides wichtiger als das Plus.
@@ -1858,7 +1863,7 @@ private final class PlayerView: NSView {
         // Das Cover fuehrt zum Titel selbst, alles uebrige holt nur Spotify
         // nach vorn. Im Liedtext-Modus ist es null Punkte breit, dann trifft
         // die Pruefung ohnehin nie.
-        if cover.bounds.contains(cover.convert(point, from: self)) {
+        if !cover.isHidden, cover.bounds.contains(cover.convert(point, from: self)) {
             onCoverClick?()
             return
         }
@@ -2478,8 +2483,8 @@ private final class PlayerView: NSView {
     static let minTitleRoom: CGFloat = 70
 
     /// Breite, die die Knopfreihe braucht – gerechnet, nicht gesetzt.
-    private func buttonsAdvance(add: Bool, repeatOn: Bool, previous: Bool) -> CGFloat {
-        let symbolGap: CGFloat = 12
+    private func buttonsAdvance(add: Bool, repeatOn: Bool, previous: Bool,
+                               symbolGap: CGFloat = 12) -> CGFloat {
         var total: CGFloat = 0
         let set: [(NSButton, String, Bool)] = [
             (addButton, "plus", add), (repeatButton, "repeat", repeatOn),
@@ -2494,6 +2499,32 @@ private final class PlayerView: NSView {
         }
         return total
     }
+
+    /// Was die beiden kleinen Stufen brauchen. Gerechnet statt gesetzt: die
+    /// Cover-Groesse haengt an der Dock-Hoehe, eine feste Zahl waere bei einem
+    /// groesseren Dock zu knapp und das Cover fiele weg. Gerechnet wird mit
+    /// derselben Formel wie im Layout, damit beide zum selben Schluss kommen.
+    func compactWidths() -> (tiny: CGFloat, mini: CGFloat) {
+        let pad: CGFloat = 8, gap: CGFloat = 10
+        // buttonsAdvance zaehlt vor jede Taste einen Abstand, auch vor die
+        // erste. Der ist nur noetig, wenn links davon etwas steht – hier steht
+        // nichts, und genau der eine Abstand war die Luft in den Raendern.
+        let buttons = buttonsAdvance(add: false, repeatOn: false, previous: false,
+                                     symbolGap: Self.compactGap) - Self.compactGap
+        let coverSize = bounds.height - pad * 2 - 2
+        _ = gap
+        return (ceil(pad + buttons + pad),
+                ceil(pad + coverSize + Self.compactCoverGap + buttons + pad))
+    }
+
+    /// Enger als die 12 Punkte im vollen Panel: dort trennen sie fuenf Tasten
+    /// von Text und Tonanzeige, hier stehen nur zwei nebeneinander.
+    static let compactGap: CGFloat = 8
+    /// Abstand Cover zu Tastenreihe in den kleinen Groessen. Klein gesetzt,
+    /// weil der Tastenrahmen seinen eigenen Innenrand mitbringt: gemessen rund
+    /// neun Punkte, die optisch dazukommen. Vier gesetzte Punkte ergeben rund
+    /// dreizehn sichtbare – dasselbe Mass wie zwischen den beiden Tasten.
+    static let compactCoverGap: CGFloat = 4
 
     override func layout() {
         super.layout()
@@ -2541,7 +2572,7 @@ private final class PlayerView: NSView {
         // 25, 12, 24 und 18 px); in gleich breiten Rahmen wirken die Abstaende
         // dadurch ungleich. Deshalb folgt jeder Rahmen seinem Symbol.
         let buttonHeight = min(26, bounds.height - pad * 2)
-        let symbolGap: CGFloat = 12
+        var symbolGap: CGFloat = 12
         var x = bounds.width - pad
         // x wandert von rechts nach links und markiert immer die Kante der
         // gezeichneten Flaeche – die Raender des Symbols werden herausgerechnet.
@@ -2554,17 +2585,50 @@ private final class PlayerView: NSView {
         // dann das Plus, dann Zurueck. Weiter und Abspielen bleiben immer.
         // Zur Playlist legen kann man einen Titel nur hier; wiederholen auch
         // in Spotify selbst.
-        let textLeftForFit = showsLyrics ? pad : pad + (bounds.height - pad * 2 - 2) + gap
+        //
+        // Reicht es auch ohne alle drei nicht mehr fuer einen Titelrest, faellt
+        // der Text ganz weg – dann bleiben Cover, Abspielen und Weiter (Mini).
+        // Wird es noch enger, geht auch das Cover; uebrig bleiben die beiden
+        // Tasten (Winzig). Beides faellt aus derselben Rechnung, es gibt keine
+        // gesetzten Schwellen.
         var showAdd = true, showRepeat = true, showPrevious = true
-        for _ in 0..<3 {
-            let used = buttonsAdvance(add: showAdd, repeatOn: showRepeat, previous: showPrevious)
-                + (showsSpectrum ? 30 + gap : 0)
-            let room = bounds.width - pad - used - textLeftForFit - gap
-            if room >= Self.minTitleRoom { break }
+        var showsMeter = showsSpectrum
+        var showsTextBlock = true
+        var showsCover = !showsLyrics
+        for _ in 0..<7 {
+            // Ohne Text ruecken die Tasten enger und brauchen keinen fuehrenden
+            // Abstand – beides fliesst schon in die Platzrechnung ein, sonst
+            // fiele bei genau passender Breite doch wieder etwas weg.
+            let sg: CGFloat = showsTextBlock ? 12 : Self.compactGap
+            let used = buttonsAdvance(add: showAdd, repeatOn: showRepeat,
+                                      previous: showPrevious, symbolGap: sg)
+                - (showsTextBlock ? 0 : sg)
+                + (showsMeter && showsTextBlock ? 30 + gap : 0)
+            let left = showsCover
+                ? pad + coverSize + (showsTextBlock ? gap : Self.compactCoverGap)
+                : pad
+            let room = bounds.width - pad - used - left - (showsTextBlock ? gap : 0)
+            if showsTextBlock ? (room >= Self.minTitleRoom) : (room >= 0) { break }
             if showRepeat { showRepeat = false }
             else if showAdd { showAdd = false }
+            // Die Tonanzeige weicht vor dem Text: sie ist Zierde, der Titel
+            // ist der Inhalt. Stand sie in der Reihenfolge dahinter, verschwand
+            // bei 216 Punkten der Text, obwohl er ohne sie bequem passte.
+            else if showsMeter { showsMeter = false }
             else if showPrevious { showPrevious = false }
+            else if showsTextBlock { showsTextBlock = false }
+            else if showsCover { showsCover = false }
             else { break }
+        }
+        cover.isHidden = showsLyrics || !showsCover
+        if !showsTextBlock { symbolGap = Self.compactGap }
+        // Ohne Text sind die Tasten das einzige rechts vom Cover. Rechtsbuendig
+        // sieht das nach abgeschnitten aus; mittig sieht es gewollt aus.
+        if !showsTextBlock {
+            let group = buttonsAdvance(add: showAdd, repeatOn: showRepeat,
+                                       previous: showPrevious, symbolGap: symbolGap) - symbolGap
+            let left = showsCover ? pad + coverSize + Self.compactCoverGap : pad
+            x -= max(0, ((bounds.width - pad - left) - group) / 2)
         }
         previousButton.isHidden = !showPrevious
         addButton.isHidden = !showAdd
@@ -2600,10 +2664,16 @@ private final class PlayerView: NSView {
         // Knoepfe stehen – nicht am Text. Sonst ginge sie bei jedem Titel an
         // und aus. Passt der Titel nicht, laeuft er durch.
         let spectrumWidth: CGFloat = 30
-        let textLeft = showsLyrics ? pad : cover.frame.maxX + gap
+        let textLeft = showsLyrics || !showsCover ? pad : cover.frame.maxX + gap
         let roomForTitle = rightEdge - textLeft - (spectrumWidth + gap)
-        let spectrumVisible = showsSpectrum && roomForTitle >= Self.minTitleRoom
+        let spectrumVisible = showsMeter && showsTextBlock && roomForTitle >= Self.minTitleRoom
         spectrum.isHidden = !spectrumVisible
+        if spectrumShowing != spectrumVisible {
+            spectrumShowing = spectrumVisible
+            // Nicht waehrend des Layouts: der Ruf startet oder stoppt den
+            // Mitschnitt und kann seinerseits ein Layout anstossen.
+            DispatchQueue.main.async { [weak self] in self?.onSpectrumVisibility?() }
+        }
         if spectrumVisible {
             let spectrumHeight: CGFloat = 20
             spectrum.frame = CGRect(x: rightEdge - spectrumWidth,
@@ -2616,8 +2686,16 @@ private final class PlayerView: NSView {
         let textWidth = max(20, rightEdge - textLeft)
         let lineHeight: CGFloat = 14
         let top = (bounds.height - lineHeight * 2) / 2
-        artistLabel.isHidden = wrapsText || !showsArtistLine
-        if !wrapsText && !showsArtistLine {
+        artistLabel.isHidden = wrapsText || !showsArtistLine || !showsTextBlock
+        if !showsTextBlock {
+            // Zu schmal fuer Text. Der Lauftext wird dabei angehalten – sonst
+            // liefe eine Animation weiter, die niemand sieht.
+            titleLabel.isHidden = true
+            marquee.isHidden = true
+            marquee.removeAnimation(forKey: "lauftext")
+            marqueeKey = ""
+            titleClip.frame = .zero
+        } else if !wrapsText && !showsArtistLine {
             // Nur der Titel: dann steht er mittig, nicht auf der oberen der
             // beiden Zeilen.
             placeTitle(CGRect(x: textLeft, y: round((bounds.height - lineHeight) / 2) + lift,
@@ -2667,6 +2745,10 @@ private final class PlayerView: NSView {
         // Beide Werte sind gemessen, nicht geschaetzt – siehe README.
         let timeGap: CGFloat = 7
         let edgeGap: CGFloat = 13
+        // In den kleinen Groessen ist fuer zwei Zeitangaben kein Platz; die
+        // Leiste allein bleibt lesbar und nimmt dann die ganze Breite.
+        timeLabel.isHidden = !showsTextBlock
+        totalLabel.isHidden = !showsTextBlock
         timeLabel.frame = CGRect(x: textLeft, y: labelY, width: leftWidth, height: labelHeight)
         totalLabel.frame = CGRect(x: bounds.width - edgeGap - rightWidth, y: labelY,
                                   width: rightWidth, height: labelHeight)
@@ -2674,8 +2756,8 @@ private final class PlayerView: NSView {
         // Ziffern tragen unterschiedlich viel Tinte an ihren Raendern: gleiche
         // gesetzte Abstaende wirken deshalb um einen Punkt ungleich. Nachgemessen
         // und hier ausgeglichen.
-        let barLeft = timeLabel.frame.maxX + timeGap
-        let barRight = totalLabel.frame.minX - (timeGap - 1)
+        let barLeft = showsTextBlock ? timeLabel.frame.maxX + timeGap : pad
+        let barRight = showsTextBlock ? totalLabel.frame.minX - (timeGap - 1) : bounds.width - pad
         progressBar.frame = CGRect(x: barLeft, y: 0, width: max(10, barRight - barLeft), height: barHeight)
     }
 }
@@ -2762,9 +2844,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// bei jedem Umschalten.
     private var widthKey: String { lyricsMode ? "lyricsWidth" : "panelWidth" }
 
-    /// Unter 200 Punkten bleibt vom Panel nichts Sinnvolles uebrig: Cover,
-    /// eine lesbare Titelzeile und ein Knopf brauchen zusammen so viel.
-    static let minWidth: CGFloat = 200
+    /// So breit sind Abspielen und Weiter samt Raendern – darunter bliebe vom
+    /// Panel nichts mehr uebrig.
+    static let minWidth: CGFloat = 60
 
     /// Das Panel steht neben dem Dock, nicht um ihn herum – es zaehlt also der
     /// Platz auf **einer** Seite, nicht die Restbreite des Bildschirms. Auf
@@ -2800,8 +2882,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let autohide = (number("autohide") ?? 0) != 0
         // Ohne largesize greift Apples Vorgabe; dann ist die Vergroesserung echt.
+        // Vier Punkte Schwelle, nicht bloss groesser: auf diesem Rechner stand
+        // largesize 38 gegen tilesize 37. Ein Punkt Wachstum bei zwoelf Blicken
+        // je Sekunde ist nach 83 ms nachgezogen und damit unsichtbar – dafuer
+        // den Bildtakt zu fahren waere Verschwendung. Bei den neunzig Punkten
+        // einer echten Vergroesserung sieht man das Nachlaufen sehr wohl.
         let magnifies = (number("magnification") ?? 0) != 0
-            && (number("largesize") ?? 128) > (number("tilesize") ?? 48)
+            && (number("largesize") ?? 128) > (number("tilesize") ?? 48) + 4
         let reacts = autohide || magnifies
         guard reacts != dockReactsToPointer else { return }
         dockReactsToPointer = reacts
@@ -2843,6 +2930,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Der Dock meldet Aenderungen seiner Einstellungen selbst; der
         // Minutentakt oben ist nur die Rueckfallebene.
+        // Der Stromsparmodus laesst sich im Betrieb umlegen; beide Takte
+        // richten sich danach.
+        NotificationCenter.default.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange,
+            object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.setFollowRate(fast: self.fastFollow, force: true)
+                self.stopSpectrumUpdates()
+                self.updateAnalyzer()
+                self.noteFollow(self.lowPower ? "Stromsparmodus an" : "Stromsparmodus aus")
+        }
+
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("com.apple.dock.prefchanged"),
             object: nil, queue: .main) { [weak self] _ in self?.refreshDockBehaviour() }
@@ -2903,6 +3002,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addButton.action = #selector(addToPlaylist)
         view.onClick = { [weak self] in self?.openSpotify() }
         view.onArtistClick = { [weak self] uri in self?.openArtist(uri) }
+        view.onSpectrumVisibility = { [weak self] in self?.updateAnalyzer() }
         view.onCoverClick = { [weak self] in self?.openTrack() }
         view.onTextChange = { [weak self] in
             guard let self else { return }
@@ -3018,9 +3118,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(lyricsItem)
         // Die Stufen sind an den Inhalt gekoppelt, nicht rund gewaehlt: jede
         // bringt etwas Sichtbares mehr (siehe README, Abschnitt Breite).
+        // Die beiden kleinen Stufen haengen an der Dock-Hoehe; deshalb bei
+        // jedem Aufklappen neu gerechnet.
+        let compact = view?.compactWidths() ?? (tiny: 90, mini: 132)
         let steps: [(String, Double)] = lyricsMode
             ? [(t("Schmal", "Narrow"), 420), (t("Normal", "Normal"), 520), (t("Breit", "Wide"), 640), (t("Sehr breit", "Very wide"), 760)]
-            : [(t("Schmal", "Narrow"), 250), (t("Normal", "Normal"), 380), (t("Breit", "Wide"), 520), (t("Sehr breit", "Very wide"), 640)]
+            : [(t("Winzig", "Tiny"), Double(compact.tiny)),
+               (t("Mini", "Mini"), Double(compact.mini)),
+               (t("Schmal", "Narrow"), 250), (t("Normal", "Normal"), 380),
+               (t("Breit", "Wide"), 520), (t("Sehr breit", "Very wide"), 640)]
         // Gegen die tatsaechliche Breite pruefen, nicht gegen die gespeicherte:
         // die letzte Stufe traegt den verfuegbaren Platz, nicht den Wunschwert.
         let current = Double(panelWidth)
@@ -3327,8 +3433,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Die Wiedergabeposition steht nur in der Zeitleiste, und die ist beim
         // Zeigen, bei grosser Breite und im Liedtext-Modus zu sehen. Sonst
         // interessiert sie niemanden, und ein Abruf kostet 55 ms.
-        let needsPosition = view?.isHovering == true || view?.showsExtras == true || lyricsMode
-        let interval: TimeInterval = track.isPlaying ? (needsPosition ? 5 : 15) : 20
+        // Ist das Panel gar nicht zu sehen – Vollbild, ausgefahrener Dock –,
+        // sieht niemand die Position. Der Volltakt alle 60 Sekunden und
+        // Spotifys eigene Meldung genuegen dann.
+        let visible = panel?.isVisible == true
+        let needsPosition = visible
+            && (view?.isHovering == true || view?.showsExtras == true || lyricsMode)
+        let interval: TimeInterval = !visible ? 30
+            : (track.isPlaying ? (needsPosition ? 5 : 15) : 20)
         guard pollInterval != interval else { return }
         pollInterval = interval
         pollTimer?.invalidate()
@@ -3403,7 +3515,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Mitschnitt nur, solange wirklich etwas läuft – sonst kostet er unnötig Rechenzeit.
     private func updateAnalyzer() {
-        guard spectrumEnabled, track.isPlaying, track.spotifyRunning,
+        // Auch das sichtbare Panel gehoert in die Bedingung: im Vollbild ist es
+        // weg, der Mitschnitt lief aber weiter und kostete 0,4 % fuer nichts.
+        // Am Laptop ist Vollbild der Normalfall, nicht die Ausnahme.
+        guard spectrumEnabled, view?.spectrumShowing == true,
+              panel?.isVisible == true, track.isPlaying, track.spotifyRunning,
               let spotify = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.spotify.client" })
         else {
             if analyzer.isRunning { analyzer.stop() }
@@ -3422,7 +3538,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard spectrumTimer == nil else { return }
         // 24 statt 30 Bilder je Sekunde: die Balken bewegen sich fuer das Auge
         // gleich, gemessen kostet der Unterschied 0,3 Prozentpunkte.
-        let rate = max(5.0, min(60.0, UserDefaults.standard.object(forKey: "spectrumRate") as? Double ?? 24))
+        var rate = max(5.0, min(60.0, UserDefaults.standard.object(forKey: "spectrumRate") as? Double ?? 24))
+        if lowPower { rate /= 2 }
         let timer = Timer(timeInterval: 1.0 / rate, repeats: true) { [weak self] _ in
             guard let self, self.panel.isVisible, self.view.showsSpectrum else { return }
             self.view.spectrum.bands = self.analyzer.currentBands()
@@ -3674,11 +3791,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// deshalb nur, solange der Zeiger beim Dock steht – nur dann kann sich
     /// dessen Groesse ueberhaupt aendern. Sonst zwoelfmal je Sekunde, was
     /// genuegt, um die Annaeherung rechtzeitig zu bemerken.
-    private func setFollowRate(fast: Bool) {
-        guard fast != fastFollow else { return }
+    /// Im Stromsparmodus haelt das System Hintergrundarbeit ohnehin zurueck;
+    /// ein Panel neben dem Dock hat dann erst recht keinen Anspruch auf
+    /// sechzig Blicke je Sekunde.
+    private var lowPower: Bool { ProcessInfo.processInfo.isLowPowerModeEnabled }
+
+    private func setFollowRate(fast: Bool, force: Bool = false) {
+        guard force || fast != fastFollow else { return }
         fastFollow = fast
         followTimer?.invalidate()
-        let hz = fast ? fastFollowRate : 12
+        let hz = fast ? (lowPower ? fastFollowRate / 2 : fastFollowRate) : (lowPower ? 8 : 12)
         followTimer = schedule(every: 1.0 / hz) { [weak self] in self?.followDock() }
         writeDiagnostics()
     }
@@ -3708,6 +3830,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Titel. Dann gehoert das Panel sofort weg.
             if panel.isVisible {
                 panel.orderOut(nil)
+                // Was niemand sieht, muss auch nicht gerechnet werden.
+                updateAnalyzer()
+                syncPollRate()
                 noteFollow("verborgen: kein Dock")
                 writeDiagnostics()
             }
@@ -3723,6 +3848,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let since = offScreenSince, Date().timeIntervalSince(since) > 0.25,
                panel.isVisible {
                 panel.orderOut(nil)
+                updateAnalyzer()
+                syncPollRate()
                 noteFollow("verborgen: Dock ausgefahren")
                 writeDiagnostics()
                 return
@@ -3772,6 +3899,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if !panel.isVisible {
             panel.orderFront(nil)
+            // Wieder da: Mitschnitt und Abfragetakt zurueck auf Normalbetrieb,
+            // und die Position einmal frisch holen, damit die Leiste nicht mit
+            // einem alten Stand aufblendet.
+            updateAnalyzer()
+            syncPollRate()
+            refreshPosition()
             writeDiagnostics()
         }
         // Album und Liedtextvorschau haengen an der Breite; nach jeder
@@ -3817,6 +3950,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Panel sichtbar           : \(panel?.isVisible == true)",
             "Auswahlfenster           : \(picker?.isVisible == true ? "offen mit \(pickerCount) Playlists" : "zu")",
             "Nachfuehren, zuletzt     : \(followLog.isEmpty ? "nichts" : followLog.joined(separator: " | "))",
+            "Stromsparmodus           : \(lowPower ? "an - Takte halbiert" : "aus")",
             "Dock reagiert auf Zeiger : \(dockReactsToPointer ? "ja" : "nein - schneller Takt aus")",
             "Takt                     : leer=\(lastDockFrame.isNull) beimDock=\(pointerNearDock) aufPanel=\(pointerOnPanel) schnell=\(fastFollow)",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",
