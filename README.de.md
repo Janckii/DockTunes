@@ -93,6 +93,14 @@ Eingestellt wird sie im Rechtsklick-Menü unter **Breite**, in sechs Stufen
 jede bringt etwas Sichtbares mehr. Normal- und Liedtext-Modus haben eigene
 Stufen. Zwischenwerte über `panelWidth` und `lyricsWidth`, siehe Einstellungen.
 
+Auf beide rastet das Panel auch von selbst ein, wenn der Dock breiter wird und
+den Platz wegnimmt: sobald Titel und Interpret nicht mehr hineinpassen, wird es
+auf die Mini-Breite gestaucht, und reicht auch die nicht, auf Winzig. Ohne das
+blieb es in voller Restbreite stehen, und Cover und Tasten schwammen mit einer
+Handbreit Luft darin – der Platz war ja reserviert, nur nichts mehr da, was
+hineingehört. Nachgeprüft: mit zwei zusätzlich gestarteten Programmen wuchs der
+Dock von 1056 auf 1134 Punkte, und das Panel ging von 216 auf 102.
+
 **Winzig** zeigt nur Abspielen/Pause und Weiter, **Mini** dazu das Cover –
 gedacht für den Laptop unterwegs, wo neben dem Dock wenig Platz ist und jede
 Zeichenfläche Strom kostet. Beide zeigen beim Zeigen weiterhin die Zeitleiste,

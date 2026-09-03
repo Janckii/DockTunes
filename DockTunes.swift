@@ -2531,17 +2531,26 @@ private final class PlayerView: NSView {
     /// Cover-Groesse haengt an der Dock-Hoehe, eine feste Zahl waere bei einem
     /// groesseren Dock zu knapp und das Cover fiele weg. Gerechnet wird mit
     /// derselben Formel wie im Layout, damit beide zum selben Schluss kommen.
-    func compactWidths() -> (tiny: CGFloat, mini: CGFloat) {
-        let pad: CGFloat = 8, gap: CGFloat = 10
+    func compactWidths(height: CGFloat) -> (tiny: CGFloat, mini: CGFloat) {
+        let pad: CGFloat = 8
         // buttonsAdvance zaehlt vor jede Taste einen Abstand, auch vor die
         // erste. Der ist nur noetig, wenn links davon etwas steht – hier steht
         // nichts, und genau der eine Abstand war die Luft in den Raendern.
         let buttons = buttonsAdvance(add: false, repeatOn: false, previous: false,
                                      symbolGap: Self.compactGap) - Self.compactGap
-        let coverSize = bounds.height - pad * 2 - 2
-        _ = gap
+        let coverSize = height - pad * 2 - 2
         return (ceil(pad + buttons + pad),
                 ceil(pad + coverSize + Self.compactCoverGap + buttons + pad))
+    }
+
+    /// Ab dieser Breite passen Titel und Interpret noch neben Cover und den
+    /// beiden Tasten. Dieselbe Rechnung wie im Layout, nur andersherum
+    /// aufgeloest – darunter faellt der Text.
+    func textFloor(height: CGFloat) -> CGFloat {
+        let pad: CGFloat = 8, gap: CGFloat = 10
+        let buttons = buttonsAdvance(add: false, repeatOn: false, previous: false)
+        let coverSize = height - pad * 2 - 2
+        return ceil(pad + buttons + pad + coverSize + gap + gap + Self.minTitleRoom)
     }
 
     /// Enger als die 12 Punkte im vollen Panel: dort trennen sie fuenf Tasten
@@ -2855,8 +2864,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let cachedWidth { return cachedWidth }
         let stored = UserDefaults.standard.object(forKey: widthKey) as? Double
             ?? (lyricsMode ? 520 : 380)
-        let width = clampWidth(CGFloat(stored))
+        let width = fitted(clampWidth(CGFloat(stored)))
         cachedWidth = width
+        return width
+    }
+
+    /// Nimmt der Dock so viel Platz weg, dass der Text nicht mehr hineinpasst,
+    /// wird auf die kleine Fassung eingerastet statt breit stehenzubleiben.
+    ///
+    /// Ohne das stand das Panel in voller Restbreite da, und Cover und die
+    /// beiden Tasten schwammen mit einer Handbreit Luft darin – der Platz war
+    /// ja reserviert, nur nichts mehr da, was hineingehoert.
+    private func fitted(_ width: CGFloat) -> CGFloat {
+        guard let view, !lyricsMode else { return width }
+        let height = lastDockFrame.isNull ? view.bounds.height : lastDockFrame.height
+        guard height > 0, width < view.textFloor(height: height) else { return width }
+        let compact = view.compactWidths(height: height)
+        if width >= compact.mini { return compact.mini }
+        if width >= compact.tiny { return compact.tiny }
         return width
     }
 
@@ -3198,7 +3223,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // bringt etwas Sichtbares mehr (siehe README, Abschnitt Breite).
         // Die beiden kleinen Stufen haengen an der Dock-Hoehe; deshalb bei
         // jedem Aufklappen neu gerechnet.
-        let compact = view?.compactWidths() ?? (tiny: 90, mini: 132)
+        let compact = view?.compactWidths(height: lastDockFrame.isNull
+                                          ? (view?.bounds.height ?? 52)
+                                          : lastDockFrame.height) ?? (tiny: 90, mini: 132)
         let steps: [(String, Double)] = lyricsMode
             ? [(t("Schmal", "Narrow"), 420), (t("Normal", "Normal"), 520), (t("Breit", "Wide"), 640), (t("Sehr breit", "Very wide"), 760)]
             : [(t("Winzig", "Tiny"), Double(compact.tiny)),

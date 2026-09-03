@@ -134,7 +134,11 @@ ones for normal and lyrics mode. If the title does not fit it scrolls: 20
 points per second, 2.5 seconds of stillness before each pass.
 
 The two smallest are for a laptop on the move: **Tiny** keeps only play/pause
-and next, **Mini** adds the cover. Both still show the progress bar on hover,
+and next, **Mini** adds the cover. The panel also falls back to them on its
+own: when the Dock grows and takes the room, it snaps to the Mini width as soon
+as title and artist no longer fit, and to Tiny when even that is too wide —
+rather than standing there at full remaining width with the buttons swimming in
+empty space. Both still show the progress bar on hover,
 without the two time readouts and across the full width. Their numbers are
 computed when the menu opens rather than fixed, because the cover scales with
 the Dock — on a taller Dock a fixed number would drop the very cover that makes
