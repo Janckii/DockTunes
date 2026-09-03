@@ -3415,6 +3415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Schrittweite je Raste; per "volumeStep" anpassbar.
             let step = UserDefaults.standard.object(forKey: "volumeStep") as? Int ?? 5
             if UserDefaults.standard.bool(forKey: "systemVolume") {
+                self.volumeGeneration += 1
                 self.pendingSystemDelta += direction * step
                 self.sendVolumeSoon()
                 self.showVolume(nil)
@@ -3481,8 +3482,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if hovering {
                 self.refreshTrack()
                 self.syncPollRate()
+                // Die Antwort kommt verzoegert. Dreht jemand in der
+                // Zwischenzeit schon am Regler, ist sie ueberholt und wuerde
+                // seinen ersten Schritt wieder einkassieren. Dieselbe Sicherung
+                // wie beim Gestenbeginn.
+                let generation = self.volumeGeneration
                 Spotify.readVolume { level in
-                    guard let level else { return }
+                    guard let level, generation == self.volumeGeneration else { return }
                     // Spotify rastet die Lautstaerke intern auf 1/64 – wer 70
                     // setzt, liest 69 zurueck. Diesen Rueckfall zu uebernehmen
                     // wuerde das Fuenferraster nach jedem Hovern zerstoeren.
