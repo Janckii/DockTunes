@@ -1268,12 +1268,7 @@ private final class ProgressBar: NSView {
         round(bounds.width * CGFloat(min(1, max(0, value))))
     }
     var tone: NSColor = .labelColor { didSet { apply() } }
-    /// Die Lautstaerke belegt dieselbe Leiste wie die Spielzeit. In den
-    /// kleinen Breiten fehlt die Textzeile, in der sonst "Lautstaerke 65 %"
-    /// steht – dann waeren beide nicht zu unterscheiden. Deshalb ist die
-    /// Lautstaerke dicker: das traegt auch ueber hellem wie dunklem Grund,
-    /// anders als eine andere Farbe.
-    var showsVolume = false { didSet { apply() } }
+    var showsVolume = false
     var onScrub: ((Double) -> Void)?      // während des Ziehens
     var onSeek: ((Double) -> Void)?       // beim Loslassen
     private var dragging = false { didSet { apply() } }
@@ -1293,7 +1288,7 @@ private final class ProgressBar: NSView {
 
     private func apply() {
         guard bounds.width > 1 else { return }
-        let barHeight: CGFloat = showsVolume ? 5 : 3
+        let barHeight: CGFloat = 3
         // Mittig im Feld – so liegt der Strich auf einer Linie mit den Zeiten
         // links und rechts davon. Der Rest des Feldes bleibt Trefferbereich.
         let y = (bounds.height - barHeight) / 2
@@ -1912,12 +1907,15 @@ private final class PlayerView: NSView {
             // Zentimeter gleich weit wandern, egal ob in Zweier- oder
             // Fuenferschritten.
             //
-            // Sechs Punkte Wischweg je Lautstaerkepunkt, gemessen: ein mittlerer
-            // Wisch bringt rund 150 Punkte zusammen und bewegt den Regler damit
-            // um etwa 25. Vorher war der Faktor 1,5 – derselbe Wisch ging von 69
-            // auf 100, also ueber den ganzen verbleibenden Weg.
+            // Anderthalb Punkte Wischweg je Lautstaerkepunkt. Ich hatte das
+            // testweise auf sechs gestellt, weil eine nachgebaute Geste den
+            // Regler ueber den ganzen Weg zog – am echten Trackpad war es
+            // danach zu traege. Die nachgebaute Geste war offenbar laenger als
+            // ein wirklicher Wisch; ohne den Nachlauf, der jetzt wegfaellt,
+            // bleibt ohnehin weniger uebrig. Feineinstellung ueber
+            // volumeScrollPoints.
             let unit = UserDefaults.standard.object(forKey: "volumeStep") as? Int ?? 5
-            let perPoint = UserDefaults.standard.object(forKey: "volumeScrollPoints") as? Double ?? 6
+            let perPoint = UserDefaults.standard.object(forKey: "volumeScrollPoints") as? Double ?? 1.5
             let step = CGFloat(unit) * CGFloat(max(0.5, min(40, perPoint)))
             while abs(scrollAccumulator) >= step {
                 onScroll?(scrollAccumulator > 0 ? 1 : -1)
@@ -2902,6 +2900,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// die 60 Hz liefen trotzdem, sobald der Zeiger in seine Naehe kam –
     /// gemessen 3,4 % gegenueber 1,1 % im Ruhezustand.
     private var dockReactsToPointer = true
+    /// Solange der Dock sich tatsaechlich bewegt, wird bildsynchron
+    /// nachgefuehrt – ganz gleich warum. Zeigernaehe erklaert nur die
+    /// Vergroesserung; der Dock wird aber auch breiter, wenn ein Programm
+    /// startet oder sich beendet, und er wandert beim Bildschirmwechsel.
+    /// Fuer all das gab es bisher keinen schnellen Takt, und bei vier Blicken
+    /// je Sekunde lief das Panel sichtbar hinterher.
+    private var movingUntil = Date.distantPast
 
     private func refreshDockBehaviour() {
         let domain = "com.apple.dock" as CFString
@@ -2959,6 +2964,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Der Dock meldet Aenderungen seiner Einstellungen selbst; der
         // Minutentakt oben ist nur die Rueckfallebene.
+        // Startet oder beendet sich ein Programm, wird der Dock breiter oder
+        // schmaler – und zwar mit einer Animation. Die Meldung kommt vor der
+        // Bewegung; damit ist das Panel von der ersten Bildzeile an dabei,
+        // statt sie erst zu bemerken.
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification,
+                     NSWorkspace.didTerminateApplicationNotification,
+                     NSWorkspace.didHideApplicationNotification,
+                     NSWorkspace.didUnhideApplicationNotification] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.movingUntil = Date().addingTimeInterval(1.2)
+                self.setFollowRate(fast: true)
+            }
+        }
+        // Ein Bildschirm kommt dazu oder faellt weg: der Dock wandert.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.movingUntil = Date().addingTimeInterval(2)
+                self.setFollowRate(fast: true)
+        }
+
         // Der Stromsparmodus laesst sich im Betrieb umlegen; beide Takte
         // richten sich danach.
         NotificationCenter.default.addObserver(
@@ -3907,9 +3936,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pointerOnPanel = panel.frame.contains(pointer)
             pointerNearDock = dockReactsToPointer && !pointerOnPanel
                 && lastDockFrame.insetBy(dx: -180, dy: -180).contains(pointer)
-            setFollowRate(fast: pointerNearDock)
-            // Im langsamen Takt genuegt jeder dritte Blick auf den Dock.
-            if !fastFollow { guard tick % 3 == 0 else { return } }
+            setFollowRate(fast: pointerNearDock || Date() < movingUntil)
+            // Frueher genuegte im langsamen Takt jeder dritte Blick. Das waren
+            // vier je Sekunde: eine Bewegung des Docks fiel damit erst nach bis
+            // zu einer Viertelsekunde auf, und genau so lange lief das Panel
+            // hinterher. Jetzt jeder Blick, also zwoelf je Sekunde – die
+            // Abfrage kostet 0,06 ms, macht 0,07 % gegenueber 0,02 %.
         }
 
         guard track.hasTrack, let dockFrame = Dock.frame() else {
@@ -3952,6 +3984,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Unveraendert und sichtbar? Dann ist nichts zu tun – das spart bei
         // 60 Abfragen je Sekunde den Grossteil der Rechenzeit.
+        // Bewegt er sich, wird fuer die naechsten Zehntelsekunden bildsynchron
+        // nachgefuehrt. Ohne das haengt das Panel bei jeder Dock-Animation
+        // zurueck, denn die dauert laenger als ein Blick im Ruhetakt.
+        // Zwei Punkte Schwelle: die Vergroesserung steht hier auf einem Punkt
+        // Unterschied, der Dock wackelt beim Vorbeifahren also staendig um
+        // eine Winzigkeit. Das bildsynchron nachzufuehren waere Verschwendung –
+        // ein Punkt ist nach einem Blick im Ruhetakt (83 ms) nachgezogen und
+        // dabei nicht zu sehen. Eine echte Bewegung faengt bei drei an: der
+        // Dock waechst in Zweierschritten, und dabei wandert auch sein Rand.
+        if !lastDockFrame.isNull {
+            let bewegung = abs(dockFrame.minX - lastDockFrame.minX)
+                + abs(dockFrame.minY - lastDockFrame.minY)
+                + abs(dockFrame.width - lastDockFrame.width)
+                + abs(dockFrame.height - lastDockFrame.height)
+            if bewegung > 2 {
+                movingUntil = Date().addingTimeInterval(0.7)
+                setFollowRate(fast: true)
+            }
+        }
         if dockFrame == lastDockFrame, panel.isVisible, panel.frame.width == panelWidth {
             return
         }
@@ -4038,6 +4089,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Auswahlfenster           : \(picker?.isVisible == true ? "offen mit \(pickerCount) Playlists" : "zu")",
             "Nachfuehren, zuletzt     : \(followLog.isEmpty ? "nichts" : followLog.joined(separator: " | "))",
             "Stromsparmodus           : \(lowPower ? "an - Takte halbiert" : "aus")",
+            "Dock bewegt sich gerade  : \(Date() < movingUntil ? "ja - bildsynchron" : "nein")",
             "Dock reagiert auf Zeiger : \(dockReactsToPointer ? "ja" : "nein - schneller Takt aus")",
             "Takt                     : leer=\(lastDockFrame.isNull) beimDock=\(pointerNearDock) aufPanel=\(pointerOnPanel) schnell=\(fastFollow)",
             "Playlist-Verbindung      : \(SpotifyWeb.isLinked ? "steht" : (SpotifyWeb.clientID == nil ? "keine Client-ID" : "nicht angemeldet"))",

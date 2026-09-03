@@ -263,7 +263,7 @@ Alles über das Rechtsklick-Menü. Zusätzlich per `defaults`:
 
 ```bash
 defaults write de.jancko.docktunes volumeStep -int 2      # Lautstärke je Raste (Vorgabe 5)
-defaults write de.jancko.docktunes volumeScrollPoints -float 4   # Wischweg je Lautstärkepunkt (Vorgabe 6)
+defaults write de.jancko.docktunes volumeScrollPoints -float 3   # Wischweg je Lautstärkepunkt (Vorgabe 1,5)
 defaults write de.jancko.docktunes followRate -int 30     # Abfragen je Sekunde
 defaults write de.jancko.docktunes rimAlpha -float 0.30   # Stärke der Lichtkante
 defaults write de.jancko.docktunes shadowStrength -float 0.6 # Schatten, 0 = aus
@@ -656,31 +656,22 @@ Die vier Stufen im Menü tun dasselbe mit weniger Umstand.
 Ein Mausrad rastet, ein Trackpad nicht: es liefert einen Strom kleiner Werte,
 und das System schiebt nach dem Abheben der Finger noch einen abklingenden
 Schwanz hinterher. Für eine Liste, die ausrollen soll, ist das richtig; für
-einen Regler ist es falsch. An einer nachgebauten Geste gemessen (Beginn,
-Bewegung, Ende, Nachlauf – posted als `CGEvent` mit gesetzten Phasenfeldern):
-
-| | vorher | jetzt |
-|---|---|---|
-| ein mittlerer Wisch nach oben | 69 → 100, also über den ganzen Rest | +11 bis +15 |
-| ein kräftiger Wisch | am Anschlag | +35 |
-| Ereignisse nach dem Loslassen | 13 wurden mitgerechnet | keins |
-
-Drei Dinge waren zu ändern:
+einen Regler ist es falsch. Nachgemessen an einer nachgebauten Geste (Beginn,
+Bewegung, Ende, Nachlauf – gepostet als `CGEvent` mit gesetzten Phasenfeldern):
+nach dem Loslassen kamen noch **dreizehn** Ereignisse an, die die Lautstärke
+weiter hochzogen.
 
 - **Der Nachlauf zählt nicht mehr mit** (`momentumPhase` leer). Die Lautstärke
   bleibt stehen, wo der Finger sie gelassen hat.
 - **Jede Geste fängt bei null an.** Ein angefangener Wisch, der die Schwelle
   nicht erreicht hat, zählte sonst beim nächsten mit – der erste Schritt kam
   zu früh oder ging in die falsche Richtung.
-- **Sechs Punkte Wischweg je Lautstärkepunkt** statt anderthalb. Ein mittlerer
-  Wisch bringt rund 150 Punkte zusammen und bewegt den Regler damit um etwa 25.
-
-Dazu zwei Kleinigkeiten. **Nach oben ist lauter**, auch wenn im System die
-natürliche Scrollrichtung eingestellt ist (`isDirectionInvertedFromDevice`):
-ein Regler folgt der Hand, nicht der Einstellung für Textfenster. Und die
-Aufrufe an Spotify werden gedrosselt – der erste sofort, danach höchstens alle
-70 ms und der letzte Wert immer. Sie laufen seriell in einer Warteschlange, und
-Spotify sieht ohnehin nur den Endwert.
+- **Nach oben ist lauter**, auch wenn im System die natürliche Scrollrichtung
+  eingestellt ist (`isDirectionInvertedFromDevice`): ein Regler folgt der Hand,
+  nicht der Einstellung für Textfenster.
+- **Die Aufrufe an Spotify werden gedrosselt** – der erste sofort, danach
+  höchstens alle 70 ms und der letzte Wert immer. Sie laufen seriell in einer
+  Warteschlange, und Spotify sieht ohnehin nur den Endwert.
 
 Zu Beginn jeder Geste wird der gemerkte Wert einmal bei Spotify nachgefragt.
 Beim Zeigen geschieht das ohnehin; bleibt der Zeiger aber liegen und jemand
@@ -689,10 +680,38 @@ dreht in Spotify selbst, rechnete das Panel sonst vom alten Stand weiter.
 Spotify rastet intern auf 1/64, und dieser Rückfall würde das Fünferraster
 zerlegen – und nur, wenn zwischenzeitlich nicht selbst gedreht wurde.
 
-In den kleinen Breiten fehlt die Zeile, in der sonst „Lautstärke 65 %" steht.
-Dort ist nur die Leiste zu sehen, und die zeigt sonst die Spielzeit. Deshalb
-ist sie bei der Lautstärke **dicker** (5 statt 3 Punkte) – das trägt über
-hellem wie dunklem Grund, anders als eine andere Farbe.
+Die Empfindlichkeit steht bei anderthalb Punkten Wischweg je Lautstärkepunkt.
+Ich hatte sie testweise auf sechs gestellt, weil die nachgebaute Geste den
+Regler über den ganzen Weg zog – am echten Trackpad war das Ergebnis träge.
+Die nachgebaute Geste war offenbar länger als ein wirklicher Wisch. Wer es
+anders mag, stellt `volumeScrollPoints`.
+
+## Am Dock kleben
+
+Der Dock ändert sich nicht nur, wenn der Zeiger bei ihm steht. Er wird breiter
+und schmaler, wenn ein Programm startet oder sich beendet, und er wandert beim
+Bildschirmwechsel – beides mit einer Animation, beides ohne Zeiger in der Nähe.
+Für diese Fälle gab es keinen schnellen Takt: der Ruhetakt schaute viermal je
+Sekunde hin, und genau so lief das Panel hinterher.
+
+Drei Änderungen:
+
+- **Der Ruhetakt schaut jetzt bei jedem Durchlauf hin**, also zwölfmal je
+  Sekunde statt bei jedem dritten. Eine Bewegung fällt damit nach höchstens
+  83 ms auf statt nach einer Viertelsekunde. Kosten: 0,07 % statt 0,02 %.
+- **Bewegt sich der Dock, wird bildsynchron nachgeführt** – für 0,7 Sekunden
+  nach der letzten Änderung, ganz gleich woher sie kommt. Mit einer Schwelle
+  von zwei Punkten: steht die Vergrößerung auf einem Punkt Unterschied, wackelt
+  der Dock beim Vorbeifahren ständig um eine Winzigkeit, und das ist nach einem
+  Blick im Ruhetakt nachgezogen, ohne dass man es sieht.
+- **Auf Meldung hin, bevor es losgeht.** `didLaunchApplication`,
+  `didTerminateApplication`, Aus- und Einblenden sowie
+  `didChangeScreenParameters` schalten den schnellen Takt vorab ein. Am
+  Protokoll geprüft: beim Start von TextEdit wuchs der Dock von 1060 auf 1068
+  Punkte und wieder zurück, durchgehend im schnellen Takt.
+
+Am Zeiger hängt der schnelle Takt weiterhin nur dort, wo die Vergrößerung
+tatsächlich etwas bewirkt – siehe Rechenzeit.
 
 ## Lauftext, warum als Bild
 
