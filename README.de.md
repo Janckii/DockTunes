@@ -752,7 +752,7 @@ Panel ist schon so gebaut: Zeitleiste und Zeiten erscheinen erst beim Zeigen.
 |---|---|---|
 | irgendwo auf dem Panel | läuft | läuft |
 | auf der Interpretenzeile | läuft | steht still, wo sie ist |
-| weg vom Panel | zurück auf Anfang | zurück auf Anfang |
+| weg vom Panel | läuft die Runde zu Ende, dann Anfang | ebenso |
 
 Dazu **ein Durchlauf je neuem Titel**, damit man ihn einmal ganz zu sehen
 bekommt, ohne hinzuzeigen. War das Panel dabei verdeckt – Vollbild etwa –, wird
@@ -762,6 +762,22 @@ Ohne Zeiger stehen sie **am Anfang**, nicht dort, wo sie gerade waren. Sonst
 sähe man beim nächsten Hinsehen die Mitte eines Titels und müsste einen ganzen
 Umlauf warten. So fängt es immer sauber von vorn an – und weil es dann ohnehin
 am Anfang steht, gibt es beim Starten keinen Sprung.
+
+Dorthin **springen** sie aber nicht: fährt der Zeiger weg, laufen sie ihre Runde
+zu Ende und parken erst dann. Ein abrupter Rücksprung mitten im Titel sieht nach
+Fehler aus, ein Auslaufen nach Absicht. Jedes Band für sich – stand die
+Interpretenzeile unter dem Zeiger still, ist sie gegenüber dem Titel versetzt
+und braucht länger. Beide parken am selben Ort, nur nicht im selben Moment, und
+beim nächsten Anlauf starten sie ohnehin wieder gemeinsam. Nachgemessen: nach
+dem Wegfahren wanderten beide noch neun Sekunden weiter (Titel 38, Interpreten
+22 Punkte je 1,8 s) und standen dann.
+
+Jede Runde beginnt mit einer Standzeit von 2,5 Sekunden, damit der Anfang zu
+lesen ist. Beim Start **durch Zeigen** wird auf 0,35 Sekunden abgekürzt: wer
+hinzeigt, hat den Anfang schon gelesen und wartet sonst zweieinhalb Sekunden auf
+nichts. Nachgemessen: 9 Punkte schon in den ersten 0,7 Sekunden. Der eine
+Durchlauf je neuem Titel behält die volle Standzeit – dort schaut ja niemand
+gezielt hin.
 
 Angehalten wird, sobald der Zeiger auf der Zeile steht, nicht erst auf einem
 Namen – sonst wäre das Anhalten selbst ein Treffer, den man erst landen müsste,

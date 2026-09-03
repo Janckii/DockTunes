@@ -1671,6 +1671,12 @@ private final class PlayerView: NSView {
     private var titleState = MarqueeState.amAnfang
     private var artistState = MarqueeState.amAnfang
     private var marqueeCycle: TimeInterval = 0
+    /// Standzeit am Anfang jeder Runde. Beim Einmallauf steht sie ganz, beim
+    /// Start durchs Zeigen wird auf den Rest abgekuerzt – wer hinzeigt, hat den
+    /// Anfang schon gelesen und wartet sonst zweieinhalb Sekunden auf nichts.
+    private let marqueePause: TimeInterval = 2.5
+    private let marqueePauseOnHover: TimeInterval = 0.35
+    private var parkTimers: [Timer] = []
     private var pointerOnArtistLine = false
     /// Ein Durchlauf je neuem Titel, damit man ihn einmal ganz zu sehen bekommt,
     /// ohne hinzuzeigen. Steht das Panel dabei nicht im Bild – Vollbild etwa –,
@@ -2582,9 +2588,10 @@ private final class PlayerView: NSView {
         // muss die Glasflaeche auch nicht neu gemischt werden. Am Ende steht
         // der zweite Abzug genau dort, wo der erste stand, der Sprung zurueck
         // auf null ist deshalb unsichtbar.
-        let pause: TimeInterval = 2.5
+        let pause = marqueePause
         let travel = Double(longest) / 20      // Punkte je Sekunde
         marqueeCycle = pause + travel
+        cancelParking()
         for (layer, step, laeuft) in [(marquee, titleStep, titleScrolls),
                                       (artistMarquee, artistStep, artistScrolls)] {
             layer.removeAnimation(forKey: "lauftext")
@@ -2687,15 +2694,51 @@ private final class PlayerView: NSView {
             }
         }
         guard isHovering || Date() < oneShotUntil else {
-            setState(marquee, &titleState, .amAnfang)
-            setState(artistMarquee, &artistState, .amAnfang)
+            runOutAndPark()
             return
         }
+        cancelParking()
         // Der Titel laeuft, sobald jemand hinsieht – auch dann, wenn der Zeiger
         // auf der Interpretenzeile steht. Sonst faengt beim haeufigsten
         // Einstieg gar nichts an: mitten auf dem Panel, wo die Namen stehen.
-        setState(marquee, &titleState, .laeuft)
-        setState(artistMarquee, &artistState, pointerOnArtistLine ? .haelt : .laeuft)
+        setState(marquee, &titleState, .laeuft, quickStart: isHovering)
+        setState(artistMarquee, &artistState, pointerOnArtistLine ? .haelt : .laeuft,
+                 quickStart: isHovering)
+    }
+
+    /// Faehrt der Zeiger weg, springt nichts zurueck: die Baender laufen ihre
+    /// Runde zu Ende und parken dann am Anfang. Ein abrupter Ruecksprung mitten
+    /// im Titel sieht nach Fehler aus, ein Auslaufen nach Absicht.
+    ///
+    /// Jedes fuer sich: stand die Interpretenzeile unter dem Zeiger still, ist
+    /// sie gegenueber dem Titel versetzt und braucht laenger. Beide parken am
+    /// selben Ort, nur nicht im selben Moment – und beim naechsten Anlauf
+    /// starten sie ohnehin wieder gemeinsam.
+    private func runOutAndPark() {
+        guard marqueeCycle > 0 else { return }
+        guard parkTimers.isEmpty else { return }
+        // Ein angehaltenes Band laeuft dafuer erst wieder an.
+        if titleState == .haelt { setState(marquee, &titleState, .laeuft) }
+        if artistState == .haelt { setState(artistMarquee, &artistState, .laeuft) }
+        for istTitel in [true, false] {
+            let layer = istTitel ? marquee : artistMarquee
+            guard (istTitel ? titleState : artistState) == .laeuft else { continue }
+            let now = layer.convertTime(CACurrentMediaTime(), from: nil)
+            let rest = marqueeCycle - now.truncatingRemainder(dividingBy: marqueeCycle)
+            let timer = Timer.scheduledTimer(withTimeInterval: max(0.05, rest),
+                                             repeats: false) { [weak self] _ in
+                guard let self else { return }
+                if istTitel { self.setState(self.marquee, &self.titleState, .amAnfang) }
+                else { self.setState(self.artistMarquee, &self.artistState, .amAnfang) }
+            }
+            parkTimers.append(timer)
+        }
+    }
+
+    private func cancelParking() {
+        guard !parkTimers.isEmpty else { return }
+        parkTimers.forEach { $0.invalidate() }
+        parkTimers.removeAll()
     }
 
     /// Haelt der Zeiger die Interpretenzeile an, laeuft der Titel weiter – die
@@ -2703,15 +2746,21 @@ private final class PlayerView: NSView {
     /// mehr: beim Verlassen gehen ohnehin beide auf Anfang zurueck und sind
     /// damit wieder im Takt. Frueher, als sie dauernd liefen, waere der Versatz
     /// geblieben – deshalb hielten damals beide an.
-    private func setState(_ layer: CALayer, _ current: inout MarqueeState, _ state: MarqueeState) {
+    private func setState(_ layer: CALayer, _ current: inout MarqueeState, _ state: MarqueeState,
+                          quickStart: Bool = false) {
         guard state != current else { return }
+        let previous = current
         current = state
         do {
             switch state {
             case .laeuft:
                 // Die Standzeit aus der Ebenenzeit herausrechnen, sonst spraenge
                 // das Band um genau diese Spanne nach vorn.
-                let stopped = layer.timeOffset
+                var stopped = layer.timeOffset
+                // Aus dem Stand heraus die Anfangspause abkuerzen.
+                if quickStart, previous == .amAnfang {
+                    stopped = max(stopped, marqueePause - marqueePauseOnHover)
+                }
                 layer.speed = 1
                 layer.timeOffset = 0
                 layer.beginTime = 0

@@ -36,7 +36,9 @@
   artists the line usually does not fit, so it scrolls like the title, in the
   same cycle — both stand still together and set off together. They scroll on
   demand rather than constantly: once through on every new track, and then
-  whenever the pointer is on the panel. Resting it on the artist line holds that
+  whenever the pointer is on the panel — setting off after a third of a second
+  rather than the usual two-and-a-half, and running the lap out before parking
+  again once you move away. Resting the pointer on the artist line holds that
   line still, so a name can be clicked in peace. The one under
   the pointer is underlined — there is no pointing-hand cursor, because only
   the frontmost application may set the cursor and the panel never comes
