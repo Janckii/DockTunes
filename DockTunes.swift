@@ -1653,6 +1653,16 @@ private final class PlayerView: NSView {
     let totalLabel = NSTextField(labelWithString: "")
     private let titleClip = NSView()
     private let marquee = CALayer()
+    /// Dasselbe fuer die Interpretenzeile: passt sie nicht, laeuft sie wie der
+    /// Titel durch. Steht der Zeiger darauf, haelt sie an – sonst waere ein
+    /// Name kaum zu treffen.
+    private let artistClip = NSView()
+    private let artistMarquee = CALayer()
+    private var artistMarqueeKey = ""
+    private var artistScrolls = false
+    private var artistPaused = false
+    private var artistStep: CGFloat = 0
+    private var artistBandWidth: CGFloat = 0
     private var marqueeKey = ""
 
     let spectrum = SpectrumView()
@@ -1747,11 +1757,17 @@ private final class PlayerView: NSView {
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.cell?.usesSingleLineMode = true
 
+        artistClip.wantsLayer = true
+        artistClip.layer?.masksToBounds = true
+        artistClip.layer?.addSublayer(artistMarquee)
+        artistMarquee.isHidden = true
+        artistClip.addSubview(artistLabel)
+        content.addSubview(artistClip)
+
         artistLabel.font = .systemFont(ofSize: 10.5, weight: .regular)
         artistLabel.textColor = .secondaryLabelColor
         artistLabel.lineBreakMode = .byTruncatingTail
         artistLabel.cell?.usesSingleLineMode = true
-        content.addSubview(artistLabel)
 
         for (button, symbol, description) in [
             (previousButton, "backward.fill", t("Vorheriger Titel", "Previous track")),
@@ -2034,7 +2050,7 @@ private final class PlayerView: NSView {
         lastSubtitle = nil
         if !wrapsText {
             wrapsText = true
-            artistLabel.isHidden = true
+            artistClip.isHidden = true
             titleLabel.cell?.usesSingleLineMode = false
             titleLabel.maximumNumberOfLines = 2
             // Umbrechen, und wenn zwei Zeilen nicht reichen, die letzte
@@ -2071,7 +2087,7 @@ private final class PlayerView: NSView {
         lastSubtitle = subtitle
         if wrapsText {
             wrapsText = false
-            artistLabel.isHidden = false
+            artistClip.isHidden = false
             titleLabel.cell?.usesSingleLineMode = true
             titleLabel.maximumNumberOfLines = 1
             titleLabel.lineBreakMode = .byTruncatingTail
@@ -2152,6 +2168,7 @@ private final class PlayerView: NSView {
         guard let base = artistBase else { return }
         guard let hoveredArtist, hoveredArtist < artistZones.count else {
             artistLabel.attributedStringValue = base
+            if artistScrolls { drawArtistBand() }
             return
         }
         let text = NSMutableAttributedString(attributedString: base)
@@ -2159,6 +2176,7 @@ private final class PlayerView: NSView {
                             .foregroundColor: NSColor(calibratedWhite: 1, alpha: 1)],
                            range: artistZones[hoveredArtist].range)
         artistLabel.attributedStringValue = text
+        if artistScrolls { drawArtistBand() }
     }
 
     private func rebuildArtistZones() {
@@ -2187,10 +2205,20 @@ private final class PlayerView: NSView {
 
     /// Welcher Name liegt unter diesem Punkt der Ansicht?
     private func artistZone(at point: CGPoint) -> Int? {
-        guard !artistZones.isEmpty, !artistLabel.isHidden else { return nil }
-        let local = convert(point, to: artistLabel)
-        guard artistLabel.bounds.contains(local) else { return nil }
-        let x = local.x - artistInset
+        guard !artistZones.isEmpty, !artistClip.isHidden else { return nil }
+        let local = convert(point, to: artistClip)
+        guard artistClip.bounds.contains(local) else { return nil }
+        guard artistScrolls else {
+            let x = local.x - artistInset
+            return artistZones.firstIndex { x >= $0.from && x <= $0.to }
+        }
+        // Das Band wandert; gefragt ist die Stelle im Text, nicht im Fenster.
+        // Die tatsaechliche Lage steht in der Darstellungsebene – die
+        // Modellebene bliebe waehrend der Bewegung auf ihrem Startwert stehen.
+        let shown = artistMarquee.presentation() ?? artistMarquee
+        let leftEdge = shown.position.x - artistBandWidth / 2
+        var x = (local.x - leftEdge).truncatingRemainder(dividingBy: artistStep)
+        if x < 0 { x += artistStep }
         return artistZones.firstIndex { x >= $0.from && x <= $0.to }
     }
 
@@ -2374,11 +2402,18 @@ private final class PlayerView: NSView {
     override func mouseExited(with event: NSEvent) {
         setHovering(false)
         setHoveredArtist(nil)
+        setArtistPaused(false)
     }
     /// Kommt nur, solange der Zeiger auf dem Panel steht, und faellt sofort
     /// wieder aus. Gezeichnet wird nur, wenn ein anderer Name darunter liegt.
     override func mouseMoved(with event: NSEvent) {
-        setHoveredArtist(artistZone(at: convert(event.locationInWindow, from: nil)))
+        let point = convert(event.locationInWindow, from: nil)
+        // Anhalten, sobald der Zeiger auf der Zeile steht – nicht erst auf
+        // einem Namen. Sonst muesste man einen wandernden Namen treffen, um
+        // ihn zum Stehen zu bringen.
+        setArtistPaused(!artistClip.isHidden
+                        && artistClip.bounds.contains(convert(point, to: artistClip)))
+        setHoveredArtist(artistZone(at: point))
     }
 
     /// Blendet die Leiste unabhaengig vom Zeigen ein – fuer die Lautstaerke.
@@ -2503,6 +2538,96 @@ private final class PlayerView: NSView {
         move.duration = pause + travel
         move.repeatCount = .infinity
         marquee.add(move, forKey: "lauftext")
+    }
+
+    /// Setzt die Interpretenzeile. Passt sie nicht, laeuft sie durch – nach
+    /// demselben Muster wie der Titel: ein Bild mit zwei Abzuegen, das um genau
+    /// eine Abzugslaenge wandert.
+    private func placeArtist(_ rect: NSRect) {
+        artistClip.frame = rect
+        let natural = ceil(artistLabel.attributedStringValue.size().width)
+        let key = "\(artistLabel.stringValue)|\(Int(rect.width))|\(Int(rect.height))"
+        guard natural > rect.width + 1 else {
+            artistScrolls = false
+            artistPaused = false
+            artistLabel.isHidden = false
+            artistLabel.frame = artistClip.bounds
+            if artistMarqueeKey != key {
+                artistMarqueeKey = key
+                artistMarquee.removeAnimation(forKey: "lauftext")
+                artistMarquee.isHidden = true
+            }
+            return
+        }
+        artistScrolls = true
+        artistLabel.isHidden = true
+        artistMarquee.isHidden = false
+        guard artistMarqueeKey != key else { return }
+        artistMarqueeKey = key
+
+        artistStep = natural + 40
+        artistBandWidth = artistStep + natural
+        drawArtistBand()
+        artistMarquee.removeAnimation(forKey: "lauftext")
+        // Beim Anhalten wird die Ebene angehalten; ein neuer Text faengt wieder
+        // von vorn und in normaler Geschwindigkeit an.
+        artistMarquee.speed = 1
+        artistMarquee.timeOffset = 0
+        artistMarquee.beginTime = 0
+        artistPaused = false
+        let pause: TimeInterval = 2.5
+        let travel = Double(artistStep) / 20
+        let start = artistMarquee.position.x
+        let move = CAKeyframeAnimation(keyPath: "position.x")
+        move.values = [start, start, start - artistStep]
+        move.keyTimes = [0, NSNumber(value: pause / (pause + travel)), 1]
+        move.timingFunctions = [CAMediaTimingFunction(name: .linear),
+                                CAMediaTimingFunction(name: .linear)]
+        move.duration = pause + travel
+        move.repeatCount = .infinity
+        artistMarquee.add(move, forKey: "lauftext")
+    }
+
+    /// Zeichnet das Band neu – auch beim Wechsel der Unterstreichung. Ohne
+    /// Ueberblendung und ohne die Bewegung anzufassen: die Ebene steht dabei
+    /// still, weil der Zeiger auf der Zeile liegt.
+    private func drawArtistBand() {
+        guard artistStep > 0 else { return }
+        let text = artistLabel.attributedStringValue
+        let height = artistClip.bounds.height
+        let size = NSSize(width: artistBandWidth, height: height)
+        let baseline = (height - ceil(text.size().height)) / 2
+        let step = artistStep
+        let image = NSImage(size: size, flipped: false) { _ in
+            text.draw(at: NSPoint(x: 0, y: baseline))
+            text.draw(at: NSPoint(x: step, y: baseline))
+            return true
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        artistMarquee.contents = image
+        artistMarquee.contentsScale = window?.backingScaleFactor ?? 2
+        if artistMarquee.frame.size != size {
+            artistMarquee.frame = CGRect(origin: .zero, size: size)
+        }
+        CATransaction.commit()
+    }
+
+    /// Haelt das Band an, solange der Zeiger auf der Zeile steht.
+    private func setArtistPaused(_ paused: Bool) {
+        guard artistScrolls, paused != artistPaused else { return }
+        artistPaused = paused
+        if paused {
+            let now = artistMarquee.convertTime(CACurrentMediaTime(), from: nil)
+            artistMarquee.speed = 0
+            artistMarquee.timeOffset = now
+        } else {
+            let stopped = artistMarquee.timeOffset
+            artistMarquee.speed = 1
+            artistMarquee.timeOffset = 0
+            artistMarquee.beginTime = 0
+            artistMarquee.beginTime = artistMarquee.convertTime(CACurrentMediaTime(), from: nil) - stopped
+        }
     }
 
     /// Mindestplatz fuer den Titel. Darunter waere er nur noch ein hastig
@@ -2722,7 +2847,7 @@ private final class PlayerView: NSView {
         let textWidth = max(20, rightEdge - textLeft)
         let lineHeight: CGFloat = 14
         let top = (bounds.height - lineHeight * 2) / 2
-        artistLabel.isHidden = wrapsText || !showsArtistLine || !showsTextBlock
+        artistClip.isHidden = wrapsText || !showsArtistLine || !showsTextBlock
         if !showsTextBlock {
             // Zu schmal fuer Text. Der Lauftext wird dabei angehalten – sonst
             // liefe eine Animation weiter, die niemand sieht.
@@ -2757,7 +2882,8 @@ private final class PlayerView: NSView {
         } else {
             placeTitle(CGRect(x: textLeft, y: round(top + lineHeight - 1) + lift,
                               width: textWidth, height: lineHeight), scrolls: true)
-            artistLabel.frame = CGRect(x: textLeft, y: round(top) + lift, width: textWidth, height: lineHeight)
+            placeArtist(CGRect(x: textLeft, y: round(top) + lift,
+                               width: textWidth, height: lineHeight))
         }
 
         // Zeitleiste: links die laufende, rechts die gesamte Zeit – beide mit

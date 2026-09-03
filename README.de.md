@@ -52,6 +52,7 @@ Schaltet man die Tonanzeige ab, entfällt die Frage.
 |---|---|
 | Klick auf das Cover | den Titel in Spotify öffnen |
 | Klick auf einen Interpreten | dessen Seite in Spotify öffnen |
+| Zeiger auf der Interpretenzeile | hält deren Lauftext an, solange er dort steht |
 | Klick sonst auf das Panel | Spotify in den Vordergrund holen |
 | Knöpfe rechts | zurück, abspielen/pausieren, weiter, wiederholen |
 | Pluszeichen | Song in die zuletzt gewählte Playlist legen |
@@ -720,6 +721,34 @@ Drei Änderungen:
 
 Am Zeiger hängt der schnelle Takt weiterhin nur dort, wo die Vergrößerung
 tatsächlich etwas bewirkt – siehe Rechenzeit.
+
+## Lauftext bei den Interpreten
+
+Sind mehrere Interpreten angegeben, passt die Zeile oft nicht – dann läuft sie
+durch wie der Titel, nach demselben Muster: ein Bild mit zwei Abzügen, das um
+genau eine Abzugslänge wandert.
+
+Zwei Dinge kommen dazu, die der Titel nicht braucht:
+
+- **Der Zeiger hält das Band an.** Sonst müsste man einen wandernden Namen
+  treffen. Angehalten wird, sobald der Zeiger auf der Zeile steht, nicht erst
+  auf einem Namen – sonst wäre das Anhalten selbst ein Treffer, den man erst
+  landen müsste. Technisch über `speed = 0` und einen festgehaltenen
+  `timeOffset` der Ebene; der Titel darüber läuft dabei weiter.
+- **Die Trefferzonen rechnen den Versatz mit.** Sie stehen in Textkoordinaten;
+  gefragt ist die Stelle im Text, nicht im Fenster. Die tatsächliche Lage des
+  Bandes steht in der **Darstellungsebene** (`presentation()`) – die
+  Modellebene bliebe während der Bewegung auf ihrem Startwert stehen. Der Rest
+  ist eine Modulo-Rechnung über die Abzugslänge, damit beide Abzüge dieselben
+  Zonen tragen.
+
+Wechselt die Unterstreichung, wird nur das Bild neu gezeichnet – ohne die
+Bewegung anzufassen und ohne Überblendung. Sonst spränge das Band bei jedem
+überfahrenen Namen an den Anfang zurück.
+
+Kosten: 0,57 Prozentpunkte, gemessen auf demselben Titel an derselben Stelle
+(1,51 % gegen 2,08 %). Sie fallen nur an, solange die Zeile tatsächlich zu lang
+ist; bei einem einzelnen Interpreten läuft nichts.
 
 ## Lauftext, warum als Bild
 
